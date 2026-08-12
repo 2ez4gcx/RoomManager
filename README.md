@@ -94,6 +94,12 @@ Sinh migration mới vào `drizzle/`. Khi deploy, control plane tự áp SQL nà
 - [Hướng dẫn triển khai VPS](docs/DEPLOYMENT.md) — kế hoạch cho phương án PostgreSQL, chưa áp dụng
 - [Thông tin ảnh chia sẻ](docs/BRAND-ASSET.md)
 
-## Nguyên tắc nguồn mã
+## Nguồn mã
 
-Repository Git chỉ được dùng cục bộ. Không tạo remote hoặc push GitHub cho tới khi chủ dự án yêu cầu rõ ràng.
+Repository riêng tư: <https://github.com/2ez4gcx/RoomManager>. Giữ ở chế độ private cho tới khi rà soát xong, vì lịch sử commit có chứa mật khẩu của tài khoản dữ liệu mẫu (`db/seed.ts`) và toàn bộ logic nghiệp vụ.
+
+Trước khi chuyển sang public hoặc đưa lên môi trường thật:
+
+- Tạo tài khoản chủ nhà riêng và bỏ tài khoản mẫu; đổi mật khẩu mặc định `roommanager`.
+- Rà lại `.env` chưa từng bị commit (đang nằm trong `.gitignore`).
+- Đảm bảo `ALLOW_DEV_SETUP` không được đặt trên môi trường thật — biến này mở route xóa sạch cơ sở dữ liệu.
