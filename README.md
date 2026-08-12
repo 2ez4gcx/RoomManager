@@ -1,1 +1,99 @@
 # RoomManager
+
+Webapp quản lý nhà trọ: tình trạng phòng, khách thuê, hợp đồng, đơn thu, phụ thu, công nợ, thu chi và yêu cầu đặt phòng online.
+
+## Trạng thái hiện tại
+
+Toàn bộ giao diện đã chạy trên dữ liệu thật, có đăng nhập.
+
+- **Đăng nhập** bằng email + mật khẩu (PBKDF2, phiên lưu cookie `HttpOnly`). Mọi trang và API quản trị đều bị khóa; chỉ `/booking` và `/login` là công khai.
+- **Nhà & phòng** — thêm nhà mới, thêm loại phòng, thêm phòng. Trạng thái phòng được **suy ra** từ hợp đồng, giữ chỗ và bảo trì, không lưu cờ riêng.
+- **Khách thuê** — tạo hồ sơ và hợp đồng cùng lúc, theo dõi công nợ và hạn hợp đồng.
+- **Đặt phòng** — bảng kanban 4 trạng thái, xác nhận là giữ chỗ có hạn.
+- **Đơn thu** — xem chi tiết từng dòng (tiền phòng, điện, nước, dịch vụ), ghi nhận thanh toán một phần hoặc toàn phần, lọc theo kỳ.
+- **Thu chi** — sổ thu chi, biểu đồ 6 tháng, cơ cấu chi; thanh toán tự sinh dòng thu.
+- **Cài đặt** — bảng giá điện/nước/dịch vụ, chu kỳ thu, thời gian giữ phòng.
+- **Trang công khai** `/booking` — hiện phòng còn trống theo thời gian thực, khách gửi yêu cầu xem phòng.
+
+Các ràng buộc nghiệp vụ đang được kiểm thử tự động: không hai hợp đồng trên một phòng, không hai người giữ cùng một phòng, không cho thuê phòng bảo trì, không thu vượt số còn nợ, ký hợp đồng thì giải phóng chỗ giữ.
+
+**Chưa làm:**
+
+- Chưa có màn hình đổi mật khẩu, quên mật khẩu, hay quản lý tài khoản nhân viên (schema đã có `users.role`, phân quyền chủ nhà/nhân viên đã áp dụng).
+- Chưa có 2FA, chưa giới hạn số lần đăng nhập sai.
+- Chưa lập đơn thu tự động theo kỳ; đơn hiện do dữ liệu mẫu tạo ra.
+- Nút "Xuất Excel", "Xuất báo cáo", "Gửi nhắc" mới là giao diện, chưa hoạt động.
+- Chưa chốt nền tảng lâu dài: đang chạy Cloudflare D1, phương án VPS/PostgreSQL vẫn để ngỏ.
+- Chưa cấu hình tên miền, VPS hay GitHub.
+
+## Chạy tại máy
+
+Yêu cầu Node.js `>=22.13.0`.
+
+```bash
+npm install
+npm run dev
+```
+
+Lần đầu chạy, dựng bảng và nạp dữ liệu mẫu (2 nhà, 40 phòng, 32 hợp đồng, 32 đơn thu):
+
+```bash
+npm run db:setup
+```
+
+Mở `http://localhost:3000` và đăng nhập:
+
+- Email: `quanly@hoangan.vn`
+- Mật khẩu: `roommanager`
+
+Đây là tài khoản của **dữ liệu mẫu**, mật khẩu nằm công khai trong `db/seed.ts`. Phải tạo tài khoản thật và đổi mật khẩu trước khi đưa lên Internet.
+
+Xóa sạch và nạp lại từ đầu:
+
+```bash
+npm run db:reset
+```
+
+Route `/api/dev/setup` mặc định bị khóa ngoài môi trường dev; bản build production chỉ mở khi khai báo `ALLOW_DEV_SETUP=true`.
+
+## Kiểm tra
+
+```bash
+npm test
+```
+
+Chạy typecheck, build, rồi kiểm thử bản build trong Miniflare (workerd thật kèm D1 thật): 41 bài, gồm xác thực, quyền truy cập, ràng buộc nghiệp vụ và kiểm tra trang công khai không lộ dữ liệu khách thuê.
+
+```bash
+npm run lint
+```
+
+## Đổi schema
+
+```bash
+npm run db:generate
+```
+
+Sinh migration mới vào `drizzle/`. Khi deploy, control plane tự áp SQL này lên D1 thật; ở máy local thì `npm run db:setup` lo việc đó.
+
+## Cấu trúc
+
+| Thư mục | Vai trò |
+|---|---|
+| `app/` | Trang (server component) + client component tương ứng, API route trong `app/api/` |
+| `db/schema.ts` | 18 bảng Drizzle |
+| `db/queries.ts`, `db/queries-extra.ts` | Truy vấn đọc, gồm cả suy ra trạng thái phòng |
+| `db/mutations.ts`, `db/bookings.ts`, `db/finance.ts`, `db/settings.ts` | Thao tác ghi kèm kiểm tra dữ liệu |
+| `db/auth.ts` | Băm mật khẩu và quản lý phiên |
+| `proxy.ts` | Chặn điều hướng; xác thực thật nằm ở `requireUser()` và `requireApiUser()` |
+
+## Tài liệu
+
+- [Định hướng sản phẩm](docs/PRODUCT-SCOPE.md)
+- [Mô hình dữ liệu](docs/DATA-MODEL.md)
+- [Hướng dẫn triển khai VPS](docs/DEPLOYMENT.md) — kế hoạch cho phương án PostgreSQL, chưa áp dụng
+- [Thông tin ảnh chia sẻ](docs/BRAND-ASSET.md)
+
+## Nguyên tắc nguồn mã
+
+Repository Git chỉ được dùng cục bộ. Không tạo remote hoặc push GitHub cho tới khi chủ dự án yêu cầu rõ ràng.
