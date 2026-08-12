@@ -24,7 +24,7 @@ Các ràng buộc nghiệp vụ đang được kiểm thử tự động: không
 - Chưa lập đơn thu tự động theo kỳ; đơn hiện do dữ liệu mẫu tạo ra.
 - Nút "Xuất Excel", "Xuất báo cáo", "Gửi nhắc" mới là giao diện, chưa hoạt động.
 - Chưa chốt nền tảng lâu dài: đang chạy Cloudflare D1, phương án VPS/PostgreSQL vẫn để ngỏ.
-- Chưa cấu hình tên miền, VPS hay GitHub.
+- Chưa cấu hình tên miền hay môi trường chạy thật; mới chạy ở máy local.
 
 ## Chạy tại máy
 
