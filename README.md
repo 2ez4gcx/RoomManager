@@ -158,6 +158,8 @@ Sinh migration mới vào `drizzle/`. Khi deploy, control plane tự áp SQL nà
 
 ## Tài liệu
 
+- [Hướng dẫn cài đặt cho khách hàng](docs/HUONG-DAN-CAI-DAT.md) — gửi kèm khi bàn giao, viết cho người không rành kỹ thuật
+- [Đóng gói và bàn giao](docs/BAN-GIAO.md) — cách tạo gói sạch, những gì không được lọt vào
 - [Định hướng sản phẩm](docs/PRODUCT-SCOPE.md)
 - [Mô hình dữ liệu](docs/DATA-MODEL.md)
 - [Đưa lên Cloudflare](docs/DEPLOY-CLOUDFLARE.md) — hướng dẫn cho nền tảng đang dùng
