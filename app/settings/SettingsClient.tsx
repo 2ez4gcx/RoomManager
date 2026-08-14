@@ -7,6 +7,7 @@ import {
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { AppShell, Modal, PageHeader } from "../components/AppShell";
+import { QrCode } from "../components/QrCode";
 import { formatDate } from "../lib/format";
 import type { SessionUser } from "../../db/auth";
 import { MIN_PASSWORD_LENGTH } from "../lib/auth-constants";
@@ -310,7 +311,11 @@ function TwoFactorModal({
   onClose: () => void;
   onChanged: () => void;
 }) {
-  const [setup, setSetup] = useState<{ secret: string; otpauthUri: string } | null>(null);
+  const [setup, setSetup] = useState<{
+    secret: string;
+    otpauthUri: string;
+    qrMatrix: string[];
+  } | null>(null);
   const [codes, setCodes] = useState<string[] | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -323,13 +328,18 @@ function TwoFactorModal({
       const payload = (await response.json()) as {
         secret?: string;
         otpauthUri?: string;
+        qrMatrix?: string[];
         error?: string;
       };
       if (!response.ok) {
         setError(payload.error ?? "Không tạo được khóa.");
         return;
       }
-      setSetup({ secret: payload.secret!, otpauthUri: payload.otpauthUri! });
+      setSetup({
+        secret: payload.secret!,
+        otpauthUri: payload.otpauthUri!,
+        qrMatrix: payload.qrMatrix ?? [],
+      });
     } catch {
       setError("Không kết nối được máy chủ.");
     } finally {
@@ -420,11 +430,18 @@ function TwoFactorModal({
           <div className="form-section-title">Bước 1 — thêm vào ứng dụng xác thực</div>
           <p className="modal-hint">
             Mở Google Authenticator, Authy hoặc ứng dụng tương đương, chọn thêm tài khoản
-            bằng cách nhập khóa thủ công, rồi nhập chuỗi dưới đây:
+            rồi quét mã dưới đây.
           </p>
-          <div className="secret-box">{formatSecret(setup.secret)}</div>
+          <div className="qr-wrap">
+            <QrCode matrix={setup.qrMatrix} />
+          </div>
           <details className="uri-details">
-            <summary>Xem chuỗi otpauth:// đầy đủ</summary>
+            <summary>Không quét được? Nhập khóa thủ công</summary>
+            <div className="secret-box">{formatSecret(setup.secret)}</div>
+            <p className="modal-hint">
+              Trong ứng dụng chọn &ldquo;nhập khóa thủ công&rdquo; rồi gõ chuỗi trên.
+              Loại khóa để mặc định là theo thời gian.
+            </p>
             <code>{setup.otpauthUri}</code>
           </details>
 

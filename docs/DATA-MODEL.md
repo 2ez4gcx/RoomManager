@@ -109,6 +109,11 @@ hoặc cũ hơn bị từ chối, nếu không ai nhìn trộm màn hình vẫn 
 trong 30 giây còn hiệu lực. Hệ quả cần biết: ngay sau khi bật, phải chờ mã kế
 tiếp mới đăng nhập được.
 
+Khóa được đưa vào ứng dụng bằng mã QR. Máy chủ sinh **ma trận điểm** rồi giao
+diện tự vẽ SVG bằng React, thay vì máy chủ trả chuỗi SVG để chèn thẳng vào
+trang — nhờ vậy không cần `dangerouslySetInnerHTML`. Vẫn giữ đường nhập khóa
+thủ công cho trường hợp không quét được.
+
 `recovery_codes` giữ 8 mã dùng khi mất điện thoại, lưu băm SHA-256. Ở đây không
 cần PBKDF2 như mật khẩu vì mã do hệ thống sinh ngẫu nhiên đủ dài, không dò được
 bằng từ điển.

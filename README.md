@@ -99,7 +99,7 @@ Sinh migration mới vào `drizzle/`. Khi deploy, control plane tự áp SQL nà
 | `db/auth.ts` | Băm mật khẩu, đổi mật khẩu và quản lý phiên |
 | `db/login-throttle.ts` | Giới hạn số lần đăng nhập sai |
 | `db/users.ts` | Quản lý tài khoản và phân quyền |
-| `db/totp.ts`, `db/two-factor.ts` | Xác thực hai bước và mã khôi phục |
+| `db/totp.ts`, `db/two-factor.ts`, `db/qr.ts` | Xác thực hai bước, mã khôi phục và mã QR |
 | `proxy.ts` | Chặn điều hướng; xác thực thật nằm ở `requireUser()` và `requireApiUser()` |
 
 ## Tài liệu

@@ -11,6 +11,7 @@ import { readdir } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Miniflare } from "miniflare";
+import jsQR from "jsqr";
 
 const distServer = fileURLToPath(new URL("../dist/server", import.meta.url));
 
@@ -400,6 +401,38 @@ test("đổi mật khẩu thành công, hủy phiên khác nhưng giữ phiên �
  */
 const totpState = { secret: "", recoveryCodes: [] };
 
+/**
+ * Giải mã ma trận QR bằng jsQR — thư viện khác với thư viện đã sinh mã.
+ *
+ * Dựng ảnh trắng đen kèm vùng trắng bao quanh, phóng to mỗi ô lên vài điểm ảnh
+ * cho giống ảnh chụp màn hình thật.
+ */
+function decodeQr(matrix) {
+  const modules = matrix.length;
+  const quiet = 4;
+  const scale = 4;
+  const size = (modules + quiet * 2) * scale;
+  const data = new Uint8ClampedArray(size * size * 4).fill(255);
+
+  for (let row = 0; row < modules; row += 1) {
+    for (let column = 0; column < modules; column += 1) {
+      if (matrix[row][column] !== "1") continue;
+      for (let dy = 0; dy < scale; dy += 1) {
+        for (let dx = 0; dx < scale; dx += 1) {
+          const x = (column + quiet) * scale + dx;
+          const y = (row + quiet) * scale + dy;
+          const index = (y * size + x) * 4;
+          data[index] = 0;
+          data[index + 1] = 0;
+          data[index + 2] = 0;
+        }
+      }
+    }
+  }
+
+  return jsQR(data, size, size)?.data ?? null;
+}
+
 async function totpCode(secret, offsetSteps = 0) {
   const response = await authed(
     `/api/dev/totp?secret=${encodeURIComponent(secret)}&offset=${offsetSteps}`,
@@ -426,10 +459,29 @@ test("bật hai bước cần xác nhận bằng mã đúng, sai thì không b�
   const begin = await authed("/api/auth/two-factor", { method: "POST" });
   assert.equal(begin.status, 201);
 
-  const { secret, otpauthUri } = await begin.json();
+  const { secret, otpauthUri, qrMatrix } = await begin.json();
   assert.match(secret, /^[A-Z2-7]{32}$/, "khóa phải là base32 32 ký tự");
   assert.match(otpauthUri, /^otpauth:\/\/totp\//);
   assert.match(otpauthUri, /issuer=RoomManager/);
+
+  // Ma trận QR phải vuông, mỗi ô chỉ là 0 hoặc 1, kích thước hợp lệ theo chuẩn
+  // (phiên bản N có 17 + 4N ô mỗi cạnh).
+  assert.ok(Array.isArray(qrMatrix) && qrMatrix.length > 0, "thiếu ma trận QR");
+  assert.equal((qrMatrix.length - 17) % 4, 0, `kích thước QR lạ: ${qrMatrix.length}`);
+  for (const row of qrMatrix) {
+    assert.equal(row.length, qrMatrix.length, "ma trận QR phải vuông");
+    assert.match(row, /^[01]+$/);
+  }
+  // Ba ô định vị ở ba góc luôn tối; thiếu là máy quét không bắt được hướng.
+  const last = qrMatrix.length - 1;
+  assert.equal(qrMatrix[0][0], "1");
+  assert.equal(qrMatrix[0][last], "1");
+  assert.equal(qrMatrix[last][0], "1");
+
+  // Kiểm tra cấu trúc thôi thì chưa chứng minh máy quét đọc được. Giải mã lại
+  // bằng thư viện khác với thư viện đã sinh, và đối chiếu đúng chuỗi ban đầu.
+  const decoded = decodeQr(qrMatrix);
+  assert.equal(decoded, otpauthUri, "mã QR không giải ra đúng chuỗi otpauth://");
 
   // Chưa xác nhận thì chưa bật.
   let status = await (await authed("/api/auth/two-factor")).json();

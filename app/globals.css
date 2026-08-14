@@ -317,3 +317,7 @@ input:disabled, select:disabled { background: #f4f2ec; color: #8b938f; cursor: n
 .submit-button.danger { background: #a8442f; }
 .submit-button.danger:hover { background: #8f3928; }
 .field-hint { display: block; margin-top: 5px; color: var(--muted); font-size: 9px; line-height: 1.5; }
+
+/* Mã QR cài đặt hai bước */
+.qr-wrap { display: grid; place-items: center; margin: 14px 0; }
+.qr-code { border: 1px solid var(--line); border-radius: 10px; background: #fff; }

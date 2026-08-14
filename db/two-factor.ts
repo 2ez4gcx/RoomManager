@@ -10,6 +10,7 @@ import { getDb } from "./index";
 import { newId } from "./ids";
 import { ValidationError, writeAudit } from "./internal";
 import { recoveryCodes, users } from "./schema";
+import { qrMatrix } from "./qr";
 import { generateTotpSecret, otpauthUri, verifyTotp } from "./totp";
 
 /** Số mã khôi phục phát mỗi lần bật. */
@@ -89,10 +90,8 @@ export async function beginTwoFactorSetup(userId: string) {
     .set({ totpSecret: secret, totpLastCounter: null, updatedAt: sql`(unixepoch() * 1000)` })
     .where(eq(users.id, userId));
 
-  return {
-    secret,
-    otpauthUri: otpauthUri({ secret, account: user.email, issuer: ISSUER }),
-  };
+  const uri = otpauthUri({ secret, account: user.email, issuer: ISSUER });
+  return { secret, otpauthUri: uri, qrMatrix: qrMatrix(uri) };
 }
 
 /**
