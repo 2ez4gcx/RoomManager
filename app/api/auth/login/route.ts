@@ -9,9 +9,11 @@ import {
 import {
   clearLoginFailures,
   clientIp,
+  discardAttempt,
   formatWait,
   registerAttempt,
 } from "../../../../db/login-throttle";
+import { consumeSecondFactor } from "../../../../db/two-factor";
 
 /**
  * Thông điệp lỗi cố tình chung chung: không nói email có tồn tại hay không, để
@@ -34,9 +36,14 @@ function dummyHash() {
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as { email?: string; password?: string };
+    const body = (await request.json()) as {
+      email?: string;
+      password?: string;
+      code?: string;
+    };
     const login = String(body.email ?? "").trim();
     const password = String(body.password ?? "");
+    const code = String(body.code ?? "").trim();
 
     if (!login || !password) {
       return Response.json({ error: INVALID }, { status: 400 });
@@ -71,6 +78,31 @@ export async function POST(request: Request) {
         },
         { status: 401 },
       );
+    }
+
+    // Mật khẩu đúng. Nếu tài khoản bật xác thực hai bước thì chưa cấp phiên.
+    if (user.totpEnabledAt && user.totpSecret) {
+      if (!code) {
+        // Chưa nhập mã thì không tính là đăng nhập sai, gỡ bản ghi vừa tạo.
+        await discardAttempt(throttle.attemptId);
+        return Response.json(
+          { needsTotp: true, error: "Nhập mã xác thực hai bước để tiếp tục." },
+          { status: 401 },
+        );
+      }
+
+      const accepted = await consumeSecondFactor(
+        user.id,
+        user.totpSecret,
+        user.totpLastCounter,
+        code,
+      );
+      if (!accepted) {
+        return Response.json(
+          { needsTotp: true, error: "Mã xác thực không đúng hoặc đã dùng rồi." },
+          { status: 401 },
+        );
+      }
     }
 
     await clearLoginFailures(login, ip);

@@ -304,3 +304,16 @@ input:disabled, select:disabled { background: #f4f2ec; color: #8b938f; cursor: n
 .row-actions .secondary-button[disabled] { opacity: .45; cursor: not-allowed; }
 .data-table select { border: 1px solid var(--line); border-radius: 7px; padding: 5px 7px; font-size: 10px; background: var(--paper); }
 .data-table select:disabled { opacity: .6; cursor: not-allowed; }
+
+/* Xác thực hai bước */
+.security-callout.callout-ok { background: #eaf5ef; border-color: #b6d8c5; }
+.secret-box { margin: 10px 0; padding: 13px; border-radius: 9px; background: #f4f2ec; border: 1px dashed var(--line); font-family: ui-monospace, monospace; font-size: 14px; letter-spacing: 1.5px; text-align: center; word-break: break-all; user-select: all; }
+.uri-details { margin-bottom: 6px; font-size: 10px; color: var(--muted); }
+.uri-details summary { cursor: pointer; }
+.uri-details code { display: block; margin-top: 7px; padding: 9px; background: #f4f2ec; border-radius: 7px; word-break: break-all; font-size: 9px; line-height: 1.6; user-select: all; }
+.recovery-block strong { display: block; font-size: 13px; margin-bottom: 4px; }
+.recovery-codes { list-style: none; margin: 13px 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.recovery-codes li { padding: 10px; background: #f4f2ec; border-radius: 8px; font-family: ui-monospace, monospace; font-size: 12px; text-align: center; letter-spacing: 1px; user-select: all; }
+.submit-button.danger { background: #a8442f; }
+.submit-button.danger:hover { background: #8f3928; }
+.field-hint { display: block; margin-top: 5px; color: var(--muted); font-size: 9px; line-height: 1.5; }

@@ -36,8 +36,39 @@ export const users = sqliteTable("users", {
   passwordHash: text("password_hash"),
   role: text("role").$type<UserRole>().notNull().default("staff"),
   isActive: integer("is_active", { mode: "boolean" }).notNull().default(true),
+
+  /** Khóa TOTP dạng base32. Có giá trị ngay khi bắt đầu cài đặt. */
+  totpSecret: text("totp_secret"),
+  /** Chỉ khác null khi người dùng đã nhập đúng mã xác nhận; đây mới là cờ "đã bật". */
+  totpEnabledAt: integer("totp_enabled_at", { mode: "timestamp_ms" }),
+  /** Bước thời gian của mã đã dùng gần nhất, chặn dùng lại cùng một mã. */
+  totpLastCounter: integer("totp_last_counter"),
+
   ...timestamps,
 });
+
+/**
+ * Mã khôi phục dùng khi mất điện thoại.
+ *
+ * Lưu băm SHA-256 chứ không lưu mã. Ở đây không cần PBKDF2 như mật khẩu: mã do
+ * hệ thống sinh ngẫu nhiên đủ dài nên không dò được bằng từ điển, mà băm chậm
+ * thì tốn CPU vô ích.
+ */
+export const recoveryCodes = sqliteTable(
+  "recovery_codes",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    codeHash: text("code_hash").notNull(),
+    usedAt: integer("used_at", { mode: "timestamp_ms" }),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (table) => [index("recovery_codes_user_idx").on(table.userId)],
+);
 
 /**
  * Phiên đăng nhập.

@@ -30,6 +30,8 @@ export const MAX_ATTEMPTS_PER_ACCOUNT = 5;
 export const MAX_ATTEMPTS_PER_IP = 20;
 
 export type ThrottleState = {
+  /** Id bản ghi vừa tạo, để hủy nếu lần thử này hóa ra không phải thất bại. */
+  attemptId: string;
   blocked: boolean;
   /** Số giây còn phải chờ; 0 khi chưa bị chặn. */
   retryAfterSeconds: number;
@@ -76,7 +78,8 @@ export async function registerAttempt(
   const db = getDb();
   const key = identifier.trim().toLowerCase();
 
-  await db.insert(loginAttempts).values({ id: newId("att"), identifier: key, ip });
+  const attemptId = newId("att");
+  await db.insert(loginAttempts).values({ id: attemptId, identifier: key, ip });
 
   // Dọn bản ghi đã ra ngoài cửa sổ, tránh phải chạy cron riêng.
   // Dùng toán tử `lt` chứ không viết `sql` thô: cột lưu epoch millisecond nên
@@ -119,6 +122,7 @@ export async function registerAttempt(
 
   if (!accountBlocked && !ipBlocked) {
     return {
+      attemptId,
       blocked: false,
       retryAfterSeconds: 0,
       remaining: Math.max(MAX_ATTEMPTS_PER_ACCOUNT - accountCount, 0),
@@ -132,10 +136,23 @@ export async function registerAttempt(
   const unlockAt = oldest + THROTTLE_WINDOW_MS;
 
   return {
+    attemptId,
     blocked: true,
     retryAfterSeconds: Math.max(Math.ceil((unlockAt - Date.now()) / 1000), 1),
     remaining: 0,
   };
+}
+
+/**
+ * Gỡ một lần thử vừa ghi.
+ *
+ * Dùng cho bước "mật khẩu đúng, đang chờ mã hai bước": đó không phải lần đăng
+ * nhập sai, tính vào bộ đếm thì người bật 2FA sẽ hết lượt chỉ sau vài lần đăng
+ * nhập bình thường.
+ */
+export async function discardAttempt(attemptId: string) {
+  const db = getDb();
+  await db.delete(loginAttempts).where(eq(loginAttempts.id, attemptId));
 }
 
 /** Đăng nhập đúng thì xóa lịch sử sai của chính cặp đó. */

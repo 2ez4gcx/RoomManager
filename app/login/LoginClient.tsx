@@ -7,6 +7,7 @@ export function LoginClient() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [lockedFor, setLockedFor] = useState(0);
+  const [needsCode, setNeedsCode] = useState(false);
 
   // Đếm ngược thời gian tạm khóa. Chỉ là tiện ích hiển thị; việc chặn thật nằm
   // ở máy chủ, tải lại trang không bỏ qua được.
@@ -26,12 +27,22 @@ export function LoginClient() {
       const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ email: form.get("email"), password: form.get("password") }),
+        body: JSON.stringify({
+          email: form.get("email"),
+          password: form.get("password"),
+          code: form.get("code") ?? "",
+        }),
       });
 
       if (!response.ok) {
-        const payload = (await response.json()) as { error?: string; retryAfterSeconds?: number };
+        const payload = (await response.json()) as {
+          error?: string;
+          retryAfterSeconds?: number;
+          needsTotp?: boolean;
+        };
         setError(payload.error ?? "Đăng nhập không thành công.");
+        // Máy chủ báo tài khoản này bật hai bước: hiện ô nhập mã rồi gửi lại.
+        if (payload.needsTotp) setNeedsCode(true);
         // 429 = bị tạm khóa; chặn luôn nút gửi cho tới khi hết thời gian chờ.
         if (response.status === 429 && payload.retryAfterSeconds) {
           setLockedFor(payload.retryAfterSeconds);
@@ -68,6 +79,22 @@ export function LoginClient() {
             Mật khẩu
             <input name="password" type="password" required autoComplete="current-password" placeholder="••••••••" />
           </label>
+          {needsCode && (
+            <label>
+              Mã xác thực hai bước
+              <input
+                name="code"
+                required
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                placeholder="123456"
+                ref={(element) => element?.focus()}
+              />
+              <small className="field-hint">
+                Mã 6 số trên ứng dụng xác thực, hoặc một mã khôi phục nếu mất điện thoại.
+              </small>
+            </label>
+          )}
           {error && <p className="form-error" role="alert">{error}</p>}
           <button className="submit-button" type="submit" disabled={busy || lockedFor > 0}>
             <LogIn size={16} />

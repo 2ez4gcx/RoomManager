@@ -9,7 +9,7 @@
 
 | Nhóm | Bảng | Vai trò |
 |---|---|---|
-| Tổ chức | `users`, `sessions`, `login_attempts` | Tài khoản, vai trò, phiên đăng nhập và lịch sử nhập sai |
+| Tổ chức | `users`, `sessions`, `login_attempts`, `recovery_codes` | Tài khoản, vai trò, phiên, lịch sử nhập sai và mã khôi phục 2FA |
 | Tài sản | `properties`, `room_types`, `rooms` | Hai nhà, loại phòng và 40 phòng cụ thể |
 | Khách | `guests` | Thông tin người thuê; số CCCD là dữ liệu nhạy cảm, không ra trang công khai |
 | Thuê | `contracts`, `contract_guests` | Thời hạn, giá, cọc và người cùng ở |
@@ -88,6 +88,34 @@ cũng không tự khóa hay tự hạ quyền chính mình.
 Mật khẩu băm bằng PBKDF2-SHA256 (Web Crypto), vì Workers không chạy được
 bcrypt/argon2 là mã native. `sessions.id` lưu băm SHA-256 của token trong cookie
 chứ không lưu chính token, nên rò rỉ bảng này không cho phép mạo danh ai.
+
+## Xác thực hai bước
+
+Dùng TOTP theo RFC 6238 (mã 6 số, đổi mỗi 30 giây), tương thích Google
+Authenticator, Authy và tương đương. Chọn TOTP vì hệ thống chưa có dịch vụ gửi
+SMS hay email nào.
+
+Thuật toán chuẩn dùng HMAC-SHA1. SHA-1 đã yếu với bài toán chống va chạm nhưng
+HMAC-SHA1 thì chưa bị phá, và đổi sang SHA-256 sẽ không quét được bằng ứng dụng
+phổ thông.
+
+Bật gồm **hai bước**: `users.totp_secret` được ghi khi sinh khóa, nhưng
+`users.totp_enabled_at` — cờ "đã bật" thật sự — chỉ được đặt sau khi người dùng
+nhập đúng một mã. Bật ngay lúc sinh khóa thì người quét hụt sẽ tự khóa mình ra
+khỏi hệ thống.
+
+`users.totp_last_counter` lưu bước thời gian của mã vừa dùng. Mã thuộc bước đó
+hoặc cũ hơn bị từ chối, nếu không ai nhìn trộm màn hình vẫn kịp dùng lại mã
+trong 30 giây còn hiệu lực. Hệ quả cần biết: ngay sau khi bật, phải chờ mã kế
+tiếp mới đăng nhập được.
+
+`recovery_codes` giữ 8 mã dùng khi mất điện thoại, lưu băm SHA-256. Ở đây không
+cần PBKDF2 như mật khẩu vì mã do hệ thống sinh ngẫu nhiên đủ dài, không dò được
+bằng từ điển.
+
+Bước "đúng mật khẩu nhưng chưa nhập mã" **không** bị tính vào giới hạn đăng
+nhập sai; nếu tính thì người bật 2FA sẽ hết lượt chỉ sau vài lần đăng nhập bình
+thường. Nhập sai mã thì có tính.
 
 ## Cách giữ schema chuyển được sang PostgreSQL
 

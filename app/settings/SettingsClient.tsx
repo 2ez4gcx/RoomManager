@@ -7,16 +7,20 @@ import {
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { AppShell, Modal, PageHeader } from "../components/AppShell";
+import { formatDate } from "../lib/format";
 import type { SessionUser } from "../../db/auth";
 import { MIN_PASSWORD_LENGTH } from "../lib/auth-constants";
+import { formatSecret } from "../lib/totp-format";
 import type { PropertyOption } from "../../db/queries";
 import type { SettingKey } from "../../db/settings";
+import type { TwoFactorStatus } from "../../db/two-factor";
 
 export function SettingsClient({
-  settings, properties, currentUser,
+  settings, properties, twoFactor, currentUser,
 }: {
   settings: Record<SettingKey, string>;
   properties: PropertyOption[];
+  twoFactor: TwoFactorStatus;
   currentUser: SessionUser;
 }) {
   const router = useRouter();
@@ -24,6 +28,7 @@ export function SettingsClient({
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
+  const [twoFactorOpen, setTwoFactorOpen] = useState(false);
 
   const readOnly = currentUser.role !== "owner";
 
@@ -150,13 +155,26 @@ export function SettingsClient({
                   <KeyRound size={15} /> Đổi mật khẩu
                 </button>
               </div>
-              <div className="security-callout">
+              <div className={`security-callout ${twoFactor.enabled ? "callout-ok" : ""}`}>
                 <ShieldCheck size={22} />
-                <div>
-                  <strong>Xác thực hai bước chưa được bật</strong>
-                  <p>Nên bật trước khi đưa hệ thống lên Internet.</p>
-                </div>
-                <button type="button">Bật 2FA</button>
+                {twoFactor.enabled ? (
+                  <div>
+                    <strong>Xác thực hai bước đang bật</strong>
+                    <p>
+                      Còn {twoFactor.recoveryCodesLeft} mã khôi phục chưa dùng.
+                      {twoFactor.recoveryCodesLeft <= 2 &&
+                        " Nên tắt rồi bật lại để nhận bộ mã mới."}
+                    </p>
+                  </div>
+                ) : (
+                  <div>
+                    <strong>Xác thực hai bước chưa được bật</strong>
+                    <p>Thêm một lớp bảo vệ nữa: người biết mật khẩu vẫn cần điện thoại của bạn.</p>
+                  </div>
+                )}
+                <button type="button" onClick={() => setTwoFactorOpen(true)}>
+                  {twoFactor.enabled ? "Quản lý" : "Bật 2FA"}
+                </button>
               </div>
             </section>
           </div>
@@ -167,6 +185,12 @@ export function SettingsClient({
       <ChangePasswordModal
         open={changingPassword}
         onClose={() => setChangingPassword(false)}
+      />
+      <TwoFactorModal
+        open={twoFactorOpen}
+        status={twoFactor}
+        onClose={() => setTwoFactorOpen(false)}
+        onChanged={() => router.refresh()}
       />
     </AppShell>
   );
@@ -267,6 +291,164 @@ function ChangePasswordModal({ open, onClose }: { open: boolean; onClose: () => 
             <KeyRound size={16} /> {busy ? "Đang đổi..." : "Đổi mật khẩu"}
           </button>
         </form>
+      )}
+    </Modal>
+  );
+}
+
+/**
+ * Hộp thoại bật/tắt xác thực hai bước.
+ *
+ * Bật gồm hai bước: lấy khóa, rồi nhập một mã đúng để xác nhận. Chỉ khi mã
+ * đúng mới bật thật — người quét hụt sẽ không tự khóa mình ra khỏi hệ thống.
+ */
+function TwoFactorModal({
+  open, status, onClose, onChanged,
+}: {
+  open: boolean;
+  status: TwoFactorStatus;
+  onClose: () => void;
+  onChanged: () => void;
+}) {
+  const [setup, setSetup] = useState<{ secret: string; otpauthUri: string } | null>(null);
+  const [codes, setCodes] = useState<string[] | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function begin() {
+    setError("");
+    setBusy(true);
+    try {
+      const response = await fetch("/api/auth/two-factor", { method: "POST" });
+      const payload = (await response.json()) as {
+        secret?: string;
+        otpauthUri?: string;
+        error?: string;
+      };
+      if (!response.ok) {
+        setError(payload.error ?? "Không tạo được khóa.");
+        return;
+      }
+      setSetup({ secret: payload.secret!, otpauthUri: payload.otpauthUri! });
+    } catch {
+      setError("Không kết nối được máy chủ.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function send(method: "PUT" | "DELETE", event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+    setBusy(true);
+
+    const form = new FormData(event.currentTarget);
+    try {
+      const response = await fetch("/api/auth/two-factor", {
+        method,
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ code: form.get("code") }),
+      });
+      const payload = (await response.json()) as { error?: string; recoveryCodes?: string[] };
+      if (!response.ok) {
+        setError(payload.error ?? "Thao tác không thành công.");
+        return;
+      }
+      if (method === "PUT") setCodes(payload.recoveryCodes ?? []);
+      else close();
+      onChanged();
+    } catch {
+      setError("Không kết nối được máy chủ.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function close() {
+    setSetup(null);
+    setCodes(null);
+    setError("");
+    setBusy(false);
+    onClose();
+  }
+
+  return (
+    <Modal open={open} onClose={close} wide>
+      <div className="modal-heading">
+        <div>
+          <span className="modal-kicker">BẢO MẬT</span>
+          <h2>Xác thực hai bước</h2>
+          <p>Mỗi lần đăng nhập sẽ cần thêm mã 6 số từ điện thoại.</p>
+        </div>
+        <button className="icon-button" onClick={close} aria-label="Đóng"><X size={20} /></button>
+      </div>
+
+      {codes ? (
+        <div className="recovery-block">
+          <strong>Đã bật xong. Lưu lại các mã khôi phục sau:</strong>
+          <p className="modal-hint">
+            Dùng khi mất điện thoại. Mỗi mã chỉ dùng được một lần, và đây là lần
+            duy nhất chúng hiện ra — hệ thống chỉ lưu bản băm. Chụp màn hình hoặc
+            chép ra giấy cất nơi an toàn.
+          </p>
+          <ul className="recovery-codes">
+            {codes.map((code) => <li key={code}>{code}</li>)}
+          </ul>
+          <button className="submit-button" type="button" onClick={close}>Tôi đã lưu xong</button>
+        </div>
+      ) : status.enabled ? (
+        <form onSubmit={(event) => send("DELETE", event)}>
+          <p className="modal-hint">
+            Đang bật từ {status.enabledAt ? formatDate(status.enabledAt.slice(0, 10)) : "—"}.
+            Còn {status.recoveryCodesLeft} mã khôi phục chưa dùng.
+          </p>
+          <label>
+            Nhập mã hiện tại để tắt
+            <input name="code" required inputMode="numeric" placeholder="123456" autoComplete="one-time-code" />
+          </label>
+          <p className="modal-hint">
+            Bắt nhập mã để người mượn máy lúc bạn đang đăng nhập không tắt hộ được.
+            Có thể dùng một mã khôi phục thay cho mã trên ứng dụng.
+          </p>
+          {error && <p className="form-error" role="alert">{error}</p>}
+          <button className="submit-button danger" type="submit" disabled={busy}>
+            {busy ? "Đang tắt..." : "Tắt xác thực hai bước"}
+          </button>
+        </form>
+      ) : setup ? (
+        <form onSubmit={(event) => send("PUT", event)}>
+          <div className="form-section-title">Bước 1 — thêm vào ứng dụng xác thực</div>
+          <p className="modal-hint">
+            Mở Google Authenticator, Authy hoặc ứng dụng tương đương, chọn thêm tài khoản
+            bằng cách nhập khóa thủ công, rồi nhập chuỗi dưới đây:
+          </p>
+          <div className="secret-box">{formatSecret(setup.secret)}</div>
+          <details className="uri-details">
+            <summary>Xem chuỗi otpauth:// đầy đủ</summary>
+            <code>{setup.otpauthUri}</code>
+          </details>
+
+          <div className="form-section-title">Bước 2 — xác nhận</div>
+          <label>
+            Mã 6 số đang hiện trên ứng dụng
+            <input name="code" required inputMode="numeric" placeholder="123456" autoComplete="one-time-code" />
+          </label>
+          {error && <p className="form-error" role="alert">{error}</p>}
+          <button className="submit-button" type="submit" disabled={busy}>
+            <ShieldCheck size={16} /> {busy ? "Đang kiểm tra..." : "Xác nhận và bật"}
+          </button>
+        </form>
+      ) : (
+        <div>
+          <p className="modal-hint">
+            Sau khi bật, đăng nhập sẽ cần mật khẩu và mã 6 số đổi mỗi 30 giây trên
+            điện thoại. Bạn sẽ nhận 8 mã khôi phục dùng khi mất máy.
+          </p>
+          {error && <p className="form-error" role="alert">{error}</p>}
+          <button className="submit-button" type="button" onClick={begin} disabled={busy}>
+            <ShieldCheck size={16} /> {busy ? "Đang tạo khóa..." : "Bắt đầu cài đặt"}
+          </button>
+        </div>
       )}
     </Modal>
   );

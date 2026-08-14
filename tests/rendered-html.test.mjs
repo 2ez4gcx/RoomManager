@@ -389,6 +389,228 @@ test("đổi mật khẩu thành công, hủy phiên khác nhưng giữ phiên �
 });
 
 /* ------------------------------------------------------------------ */
+/* Xác thực hai bước                                                  */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Sinh mã TOTP trong worker để bài kiểm thử đóng vai ứng dụng xác thực.
+ *
+ * Gọi qua route dev thay vì cài lại thuật toán ở phía kiểm thử: cài lại thì hai
+ * bên cùng sai như nhau mà bài kiểm thử vẫn xanh.
+ */
+const totpState = { secret: "", recoveryCodes: [] };
+
+async function totpCode(secret, offsetSteps = 0) {
+  const response = await authed(
+    `/api/dev/totp?secret=${encodeURIComponent(secret)}&offset=${offsetSteps}`,
+  );
+  assert.equal(response.status, 200, "route sinh mã TOTP lỗi");
+  return (await response.json()).code;
+}
+
+test("thuật toán TOTP khớp vector kiểm thử của RFC 6238", async () => {
+  const response = await authed("/api/dev/totp?rfc=1");
+  assert.equal(response.status, 200);
+
+  const { results } = await response.json();
+  // Khóa mẫu "12345678901234567890" ở dạng base32, theo phụ lục B của RFC.
+  assert.deepEqual(results, [
+    { time: 59, code: "287082" },
+    { time: 1111111109, code: "081804" },
+    { time: 1234567890, code: "005924" },
+    { time: 2000000000, code: "279037" },
+  ]);
+});
+
+test("bật hai bước cần xác nhận bằng mã đúng, sai thì không bật", async () => {
+  const begin = await authed("/api/auth/two-factor", { method: "POST" });
+  assert.equal(begin.status, 201);
+
+  const { secret, otpauthUri } = await begin.json();
+  assert.match(secret, /^[A-Z2-7]{32}$/, "khóa phải là base32 32 ký tự");
+  assert.match(otpauthUri, /^otpauth:\/\/totp\//);
+  assert.match(otpauthUri, /issuer=RoomManager/);
+
+  // Chưa xác nhận thì chưa bật.
+  let status = await (await authed("/api/auth/two-factor")).json();
+  assert.equal(status.enabled, false);
+  assert.equal(status.pending, true);
+
+  const wrong = await json("/api/auth/two-factor", { code: "000000" }, "PUT");
+  assert.equal(wrong.status, 400);
+  status = await (await authed("/api/auth/two-factor")).json();
+  assert.equal(status.enabled, false, "mã sai mà vẫn bật là tự khóa mình ra ngoài");
+
+  const confirmed = await json(
+    "/api/auth/two-factor",
+    { code: await totpCode(secret) },
+    "PUT",
+  );
+  assert.equal(confirmed.status, 200);
+
+  const payload = await confirmed.json();
+  assert.equal(payload.recoveryCodes.length, 8);
+  for (const code of payload.recoveryCodes) {
+    assert.match(code, /^[A-Z2-9]{5}-[A-Z2-9]{5}$/);
+  }
+
+  status = await (await authed("/api/auth/two-factor")).json();
+  assert.equal(status.enabled, true);
+  assert.equal(status.recoveryCodesLeft, 8);
+
+  // Giữ lại cho các bài sau dùng.
+  totpState.secret = secret;
+  totpState.recoveryCodes = payload.recoveryCodes;
+});
+
+test("đăng nhập đúng mật khẩu nhưng chưa nhập mã thì chưa được cấp phiên", async () => {
+  const response = await anonymous("/api/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json", "cf-connecting-ip": "198.51.100.20" },
+    body: JSON.stringify({ email: OWNER_EMAIL, password: OWNER_PASSWORD }),
+  });
+
+  assert.equal(response.status, 401);
+  assert.equal((await response.json()).needsTotp, true);
+  assert.equal(response.headers.get("set-cookie"), null, "không được cấp cookie phiên");
+});
+
+test("đăng nhập kèm mã đúng thì vào được, và mã đó không dùng lại được", async () => {
+  // Dùng bước kế tiếp: bước hiện tại đã bị tiêu khi xác nhận bật 2FA.
+  const code = await totpCode(totpState.secret, 1);
+
+  const first = await anonymous("/api/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json", "cf-connecting-ip": "198.51.100.21" },
+    body: JSON.stringify({ email: OWNER_EMAIL, password: OWNER_PASSWORD, code }),
+  });
+  assert.equal(first.status, 200);
+  assert.match(first.headers.get("set-cookie") ?? "", /^rm_session=/);
+
+  // Mã còn hạn tới 30 giây. Dùng lại được thì ai nhìn trộm màn hình vẫn vào được.
+  const replay = await anonymous("/api/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json", "cf-connecting-ip": "198.51.100.23" },
+    body: JSON.stringify({ email: OWNER_EMAIL, password: OWNER_PASSWORD, code }),
+  });
+  assert.equal(replay.status, 401);
+});
+
+test("mã khôi phục dùng được một lần rồi thôi", async () => {
+  const code = totpState.recoveryCodes[0];
+
+  const first = await anonymous("/api/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json", "cf-connecting-ip": "198.51.100.24" },
+    body: JSON.stringify({ email: OWNER_EMAIL, password: OWNER_PASSWORD, code }),
+  });
+  assert.equal(first.status, 200);
+
+  const reuse = await anonymous("/api/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json", "cf-connecting-ip": "198.51.100.25" },
+    body: JSON.stringify({ email: OWNER_EMAIL, password: OWNER_PASSWORD, code }),
+  });
+  assert.equal(reuse.status, 401);
+
+  const status = await (await authed("/api/auth/two-factor")).json();
+  assert.equal(status.recoveryCodesLeft, 7, "phải trừ đúng một mã");
+});
+
+test("mật khẩu sai vẫn bị chặn dù mã hai bước hợp lệ", async () => {
+  const response = await anonymous("/api/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json", "cf-connecting-ip": "198.51.100.26" },
+    body: JSON.stringify({
+      email: OWNER_EMAIL,
+      password: "sai-mat-khau",
+      code: totpState.recoveryCodes[1],
+    }),
+  });
+  assert.equal(response.status, 401);
+  assert.equal((await response.json()).needsTotp, undefined);
+
+  // Mã khôi phục không được tiêu khi mật khẩu sai.
+  const status = await (await authed("/api/auth/two-factor")).json();
+  assert.equal(status.recoveryCodesLeft, 7);
+});
+
+test("bước chờ nhập mã không bị tính là đăng nhập sai", async () => {
+  const ip = "198.51.100.27";
+
+  // Sáu lần "đúng mật khẩu, chưa nhập mã" — nhiều hơn ngưỡng 5 lần sai.
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const response = await anonymous("/api/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json", "cf-connecting-ip": ip },
+      body: JSON.stringify({ email: OWNER_EMAIL, password: OWNER_PASSWORD }),
+    });
+    assert.equal(response.status, 401);
+    assert.equal((await response.json()).needsTotp, true);
+  }
+
+  // Nếu bước này bị tính là sai thì người bật 2FA tự khóa mình sau vài lần
+  // đăng nhập bình thường.
+  const withCode = await anonymous("/api/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json", "cf-connecting-ip": ip },
+    body: JSON.stringify({
+      email: OWNER_EMAIL,
+      password: OWNER_PASSWORD,
+      code: totpState.recoveryCodes[1],
+    }),
+  });
+  assert.equal(withCode.status, 200);
+});
+
+test("nhập sai mã hai bước thì bị tính vào giới hạn", async () => {
+  const ip = "198.51.100.28";
+
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const response = await anonymous("/api/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json", "cf-connecting-ip": ip },
+      body: JSON.stringify({ email: OWNER_EMAIL, password: OWNER_PASSWORD, code: "000000" }),
+    });
+    assert.equal(response.status, 401);
+  }
+
+  const blocked = await anonymous("/api/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json", "cf-connecting-ip": ip },
+    body: JSON.stringify({ email: OWNER_EMAIL, password: OWNER_PASSWORD, code: "000000" }),
+  });
+  assert.equal(blocked.status, 429);
+});
+
+test("tắt hai bước phải nhập mã hiện tại", async () => {
+  const wrong = await json("/api/auth/two-factor", { code: "000000" }, "DELETE");
+  assert.equal(wrong.status, 400);
+
+  let status = await (await authed("/api/auth/two-factor")).json();
+  assert.equal(status.enabled, true, "mã sai mà vẫn tắt được thì 2FA vô nghĩa");
+
+  const off = await json(
+    "/api/auth/two-factor",
+    { code: totpState.recoveryCodes[2] },
+    "DELETE",
+  );
+  assert.equal(off.status, 200);
+
+  status = await (await authed("/api/auth/two-factor")).json();
+  assert.equal(status.enabled, false);
+  assert.equal(status.recoveryCodesLeft, 0, "mã khôi phục cũ phải bị xóa");
+
+  // Tắt rồi thì đăng nhập không cần mã nữa.
+  const login = await anonymous("/api/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json", "cf-connecting-ip": "198.51.100.29" },
+    body: JSON.stringify({ email: OWNER_EMAIL, password: OWNER_PASSWORD }),
+  });
+  assert.equal(login.status, 200);
+});
+
+/* ------------------------------------------------------------------ */
 /* Quản lý tài khoản                                                  */
 /* ------------------------------------------------------------------ */
 

@@ -23,13 +23,21 @@ function orderedStatements() {
 }
 
 /**
- * D1 gói lỗi gốc của SQLite vào `cause` và chỉ để "Failed query: ..." ở
- * `message`, nên phải duyệt cả chuỗi `cause` mới thấy "already exists".
+ * Nhận diện câu lệnh đã được áp từ lần chạy trước.
+ *
+ * SQLite báo mỗi loại một kiểu: `CREATE TABLE` cho "already exists", còn
+ * `ALTER TABLE ADD COLUMN` cho "duplicate column name". Thiếu vế thứ hai thì
+ * mọi migration thêm cột sẽ làm hỏng lần chạy lại.
+ *
+ * D1 gói lỗi gốc vào `cause` và chỉ để "Failed query: ..." ở `message`, nên
+ * phải duyệt cả chuỗi `cause`.
  */
+const ALREADY_APPLIED = /already exists|duplicate column name/i;
+
 function alreadyApplied(error: unknown) {
   let current: unknown = error;
   for (let depth = 0; current instanceof Error && depth < 5; depth += 1) {
-    if (/already exists/i.test(current.message)) return true;
+    if (ALREADY_APPLIED.test(current.message)) return true;
     current = current.cause;
   }
   return false;
