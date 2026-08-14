@@ -169,6 +169,112 @@ test("route dựng dữ liệu bị khóa khi không khai báo ALLOW_DEV_SETUP",
 });
 
 /* ------------------------------------------------------------------ */
+/* Đổi mật khẩu                                                       */
+/* ------------------------------------------------------------------ */
+
+test("đổi mật khẩu yêu cầu đăng nhập", async () => {
+  // /api/auth/ được proxy cho qua, nên chính route phải tự kiểm tra phiên.
+  const response = await anonymous("/api/auth/change-password", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      currentPassword: OWNER_PASSWORD,
+      newPassword: "matkhaumoi123",
+      confirmPassword: "matkhaumoi123",
+    }),
+  });
+  assert.equal(response.status, 401);
+});
+
+test("từ chối đổi mật khẩu khi mật khẩu hiện tại sai", async () => {
+  const response = await json("/api/auth/change-password", {
+    currentPassword: "sai-hoan-toan",
+    newPassword: "matkhaumoi123",
+    confirmPassword: "matkhaumoi123",
+  });
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /Mật khẩu hiện tại không đúng/);
+});
+
+test("từ chối mật khẩu mới quá ngắn, trùng cũ, hoặc nhập lại không khớp", async () => {
+  const tooShort = await json("/api/auth/change-password", {
+    currentPassword: OWNER_PASSWORD,
+    newPassword: "abc123",
+    confirmPassword: "abc123",
+  });
+  const sameAsOld = await json("/api/auth/change-password", {
+    currentPassword: OWNER_PASSWORD,
+    newPassword: OWNER_PASSWORD,
+    confirmPassword: OWNER_PASSWORD,
+  });
+  const mismatch = await json("/api/auth/change-password", {
+    currentPassword: OWNER_PASSWORD,
+    newPassword: "matkhaumoi123",
+    confirmPassword: "matkhaumoi124",
+  });
+
+  assert.equal(tooShort.status, 400);
+  assert.match((await tooShort.json()).error, /ít nhất 8 ký tự/);
+  assert.equal(sameAsOld.status, 400);
+  assert.match((await sameAsOld.json()).error, /khác mật khẩu hiện tại/);
+  assert.equal(mismatch.status, 400);
+  assert.match((await mismatch.json()).error, /không khớp/);
+});
+
+test("đổi mật khẩu thành công, hủy phiên khác nhưng giữ phiên đang dùng", async () => {
+  // Phiên thứ hai, giả lập tài khoản đang đăng nhập ở máy khác.
+  const otherLogin = await anonymous("/api/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: OWNER_EMAIL, password: OWNER_PASSWORD }),
+  });
+  const otherCookie = (otherLogin.headers.get("set-cookie") ?? "").split(";")[0];
+  const otherStillWorks = async () =>
+    (await mf.dispatchFetch("http://localhost/api/rooms", {
+      headers: { cookie: otherCookie },
+      redirect: "manual",
+    })).status;
+  assert.equal(await otherStillWorks(), 200, "tiền đề: phiên thứ hai phải dùng được");
+
+  const newPassword = "matkhaumoi123";
+  const changed = await json("/api/auth/change-password", {
+    currentPassword: OWNER_PASSWORD,
+    newPassword,
+    confirmPassword: newPassword,
+  });
+  assert.equal(changed.status, 200);
+
+  // Phiên đang thao tác vẫn dùng được, không tự đăng xuất chính mình.
+  assert.equal((await authed("/api/rooms")).status, 200);
+  // Phiên ở máy khác bị đẩy ra.
+  assert.equal(await otherStillWorks(), 401);
+
+  // Mật khẩu cũ hết hiệu lực, mật khẩu mới đăng nhập được.
+  const oldPassword = await anonymous("/api/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: OWNER_EMAIL, password: OWNER_PASSWORD }),
+  });
+  assert.equal(oldPassword.status, 401);
+
+  const withNew = await anonymous("/api/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: OWNER_EMAIL, password: newPassword }),
+  });
+  assert.equal(withNew.status, 200);
+
+  // Trả mật khẩu về như cũ để bài kiểm thử này không ràng buộc thứ tự chạy
+  // với những bài khác cũng đăng nhập bằng OWNER_PASSWORD.
+  const restored = await json("/api/auth/change-password", {
+    currentPassword: newPassword,
+    newPassword: OWNER_PASSWORD,
+    confirmPassword: OWNER_PASSWORD,
+  });
+  assert.equal(restored.status, 200);
+});
+
+/* ------------------------------------------------------------------ */
 /* Kết xuất trang                                                     */
 /* ------------------------------------------------------------------ */
 

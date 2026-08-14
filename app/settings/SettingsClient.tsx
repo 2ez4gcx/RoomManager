@@ -2,12 +2,13 @@
 
 import {
   Building2, Check, ChevronRight, CreditCard, KeyRound, Save,
-  ShieldCheck, UserCog, Zap,
+  ShieldCheck, UserCog, X, Zap,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { AppShell, PageHeader } from "../components/AppShell";
+import { AppShell, Modal, PageHeader } from "../components/AppShell";
 import type { SessionUser } from "../../db/auth";
+import { MIN_PASSWORD_LENGTH } from "../lib/auth-constants";
 import type { PropertyOption } from "../../db/queries";
 import type { SettingKey } from "../../db/settings";
 
@@ -22,6 +23,7 @@ export function SettingsClient({
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
 
   const readOnly = currentUser.role !== "owner";
 
@@ -144,7 +146,9 @@ export function SettingsClient({
             <section className="panel settings-panel" id="security">
               <div className="panel-heading">
                 <div><h2>Bảo mật tài khoản</h2><p>Đang đăng nhập: {currentUser.email}</p></div>
-                <button className="secondary-button" type="button"><KeyRound size={15} /> Đổi mật khẩu</button>
+                <button className="secondary-button" type="button" onClick={() => setChangingPassword(true)}>
+                  <KeyRound size={15} /> Đổi mật khẩu
+                </button>
               </div>
               <div className="security-callout">
                 <ShieldCheck size={22} />
@@ -158,6 +162,112 @@ export function SettingsClient({
           </div>
         </section>
       </form>
+
+      {/* Ngoài thẻ form của trang: HTML không cho lồng form trong form. */}
+      <ChangePasswordModal
+        open={changingPassword}
+        onClose={() => setChangingPassword(false)}
+      />
     </AppShell>
+  );
+}
+
+function ChangePasswordModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const [error, setError] = useState("");
+  const [done, setDone] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setError("");
+
+    const form = new FormData(event.currentTarget);
+    const newPassword = String(form.get("newPassword") ?? "");
+
+    // Đối chiếu sớm để khỏi gửi mật khẩu lên máy chủ khi biết chắc là sai.
+    if (newPassword !== String(form.get("confirmPassword") ?? "")) {
+      setError("Hai lần nhập mật khẩu mới không khớp.");
+      return;
+    }
+
+    setBusy(true);
+    try {
+      const response = await fetch("/api/auth/change-password", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          currentPassword: form.get("currentPassword"),
+          newPassword,
+          confirmPassword: form.get("confirmPassword"),
+        }),
+      });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        setError(payload.error ?? "Không đổi được mật khẩu.");
+        return;
+      }
+      setDone(true);
+    } catch {
+      setError("Không kết nối được máy chủ.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function close() {
+    setError("");
+    setDone(false);
+    onClose();
+  }
+
+  return (
+    <Modal open={open} onClose={close}>
+      <div className="modal-heading">
+        <div>
+          <span className="modal-kicker">BẢO MẬT</span>
+          <h2>Đổi mật khẩu</h2>
+          <p>Cần nhập mật khẩu hiện tại để xác nhận đúng là chủ tài khoản.</p>
+        </div>
+        <button className="icon-button" onClick={close} aria-label="Đóng"><X size={20} /></button>
+      </div>
+
+      {done ? (
+        <div className="booking-success">
+          <span><Check size={28} /></span>
+          <h2>Đã đổi mật khẩu</h2>
+          <p>
+            Lần đăng nhập sau hãy dùng mật khẩu mới. Mọi thiết bị khác đang đăng nhập
+            tài khoản này đã bị đăng xuất.
+          </p>
+          <button className="primary-button" onClick={close}>Hoàn tất</button>
+        </div>
+      ) : (
+        <form onSubmit={submit}>
+          <label>
+            Mật khẩu hiện tại
+            <input name="currentPassword" type="password" required autoComplete="current-password" />
+          </label>
+          <label>
+            Mật khẩu mới
+            <input
+              name="newPassword"
+              type="password"
+              required
+              minLength={MIN_PASSWORD_LENGTH}
+              autoComplete="new-password"
+            />
+          </label>
+          <label>
+            Nhập lại mật khẩu mới
+            <input name="confirmPassword" type="password" required autoComplete="new-password" />
+          </label>
+          <p className="modal-hint">Tối thiểu {MIN_PASSWORD_LENGTH} ký tự và phải khác mật khẩu hiện tại.</p>
+          {error && <p className="form-error" role="alert">{error}</p>}
+          <button className="submit-button" type="submit" disabled={busy}>
+            <KeyRound size={16} /> {busy ? "Đang đổi..." : "Đổi mật khẩu"}
+          </button>
+        </form>
+      )}
+    </Modal>
   );
 }

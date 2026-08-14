@@ -4,10 +4,11 @@
  * Workers không chạy được bcrypt/argon2 (là mã native), nên dùng PBKDF2 của Web
  * Crypto — có sẵn trong runtime và đủ an toàn cho quy mô này.
  */
-import { and, eq, gt, lt } from "drizzle-orm";
+import { and, eq, gt, lt, ne, sql } from "drizzle-orm";
 import { getDb } from "./index";
 import { newId } from "./ids";
 import { sessions, users } from "./schema";
+import { MIN_PASSWORD_LENGTH } from "../app/lib/auth-constants";
 
 const PBKDF2_ITERATIONS = 210_000;
 const SALT_BYTES = 16;
@@ -123,6 +124,75 @@ export async function destroySession(token: string | undefined) {
   if (!token) return;
   const db = getDb();
   await db.delete(sessions).where(eq(sessions.id, await hashToken(token)));
+}
+
+export class PasswordError extends Error {
+  readonly field: string;
+  constructor(message: string, field: string) {
+    super(message);
+    this.name = "PasswordError";
+    this.field = field;
+  }
+}
+
+/**
+ * Đổi mật khẩu của chính người đang đăng nhập.
+ *
+ * Bắt nhập lại mật khẩu hiện tại: nếu ai đó chiếm được phiên đăng nhập thì
+ * vẫn không đổi được mật khẩu để khóa chủ tài khoản ra ngoài.
+ *
+ * Đổi xong thì hủy mọi phiên khác của tài khoản này, chỉ giữ phiên đang thao
+ * tác. Đây là điểm chính của việc đổi mật khẩu: người lạ đang đăng nhập ở máy
+ * khác phải bị đẩy ra.
+ */
+export async function changePassword(input: {
+  userId: string;
+  currentPassword: string;
+  newPassword: string;
+  /** Token của phiên đang dùng, để không tự đăng xuất chính mình. */
+  keepToken?: string;
+}) {
+  const db = getDb();
+
+  if (input.newPassword.length < MIN_PASSWORD_LENGTH) {
+    throw new PasswordError(
+      `Mật khẩu mới phải có ít nhất ${MIN_PASSWORD_LENGTH} ký tự.`,
+      "newPassword",
+    );
+  }
+  if (input.newPassword === input.currentPassword) {
+    throw new PasswordError("Mật khẩu mới phải khác mật khẩu hiện tại.", "newPassword");
+  }
+
+  const [user] = await db
+    .select({ id: users.id, passwordHash: users.passwordHash })
+    .from(users)
+    .where(eq(users.id, input.userId))
+    .limit(1);
+  if (!user) throw new PasswordError("Không tìm thấy tài khoản.", "currentPassword");
+
+  if (!(await verifyPassword(input.currentPassword, user.passwordHash))) {
+    throw new PasswordError("Mật khẩu hiện tại không đúng.", "currentPassword");
+  }
+
+  await db
+    .update(users)
+    .set({
+      passwordHash: await hashPassword(input.newPassword),
+      updatedAt: sql`(unixepoch() * 1000)`,
+    })
+    .where(eq(users.id, user.id));
+
+  const keepId = input.keepToken ? await hashToken(input.keepToken) : null;
+  await db
+    .delete(sessions)
+    .where(
+      keepId
+        ? and(eq(sessions.userId, user.id), ne(sessions.id, keepId))
+        : eq(sessions.userId, user.id),
+    );
+
+  return { ok: true };
 }
 
 /**
