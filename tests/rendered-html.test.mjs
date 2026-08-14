@@ -1560,6 +1560,197 @@ test("trả phòng yêu cầu đăng nhập", async () => {
 });
 
 /* ------------------------------------------------------------------ */
+/* Hủy đơn thu                                                        */
+/* ------------------------------------------------------------------ */
+
+/** Lập một đơn mới ở kỳ chưa dùng, trả về đơn vừa lập. */
+async function issueOneInvoice(periodOffset, readingDelta = 100) {
+  const period = nextPeriod(periodOffset);
+  const data = await preview(period);
+  const target = data.rows.find((row) => !row.existingInvoiceCode);
+  assert.ok(target, `kỳ ${period} không còn hợp đồng nào để lập đơn`);
+
+  const issued = await json("/api/billing", {
+    period,
+    entries: [
+      { contractId: target.contractId, currentReading: target.previousReading + readingDelta },
+    ],
+  });
+  assert.equal(issued.status, 201);
+
+  const { invoices } = await (await authed(`/api/invoices?period=${period}`)).json();
+  const invoice = invoices.find((row) => row.roomCode === target.roomCode);
+  return { period, invoice, target };
+}
+
+test("hủy đơn cần lý do", async () => {
+  const { invoice } = await issueOneInvoice(10);
+
+  const response = await json("/api/invoices/cancel", { invoiceId: invoice.id, reason: "  " });
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /lý do hủy/);
+});
+
+test("hủy đơn thì đơn không mất, chỉ đổi trạng thái", async () => {
+  const { period, invoice } = await issueOneInvoice(11);
+
+  const response = await json("/api/invoices/cancel", {
+    invoiceId: invoice.id,
+    reason: "Nhập nhầm chỉ số điện",
+  });
+  assert.equal(response.status, 200);
+
+  const { invoices, summary } = await (await authed(`/api/invoices?period=${period}`)).json();
+  const after = invoices.find((row) => row.id === invoice.id);
+
+  // Giữ lại để truy vết, không xóa cứng.
+  assert.ok(after, "đơn bị xóa mất thay vì chuyển trạng thái");
+  assert.equal(after.status, "cancelled");
+  assert.equal(after.statusLabel, "Đã hủy");
+  assert.equal(after.outstanding, 0, "đơn đã hủy vẫn hiện còn nợ");
+
+  // Không còn tính vào doanh thu của kỳ.
+  assert.equal(summary.billed, 0, "đơn đã hủy vẫn tính vào phải thu");
+});
+
+test("đơn đã hủy không còn tính vào công nợ của khách", async () => {
+  const { period, invoice, target } = await issueOneInvoice(12);
+
+  const before = await (await authed("/api/rooms")).json();
+  const roomBefore = before.rooms.find((room) => room.code === target.roomCode);
+  assert.ok(roomBefore.outstanding > 0, "tiền đề: phòng phải đang có nợ");
+
+  assert.equal(
+    (await json("/api/invoices/cancel", { invoiceId: invoice.id, reason: "Lập trùng" })).status,
+    200,
+  );
+
+  const after = await (await authed("/api/rooms")).json();
+  const roomAfter = after.rooms.find((room) => room.code === target.roomCode);
+  assert.equal(roomAfter.outstanding, 0);
+  assert.ok(period);
+});
+
+test("hủy xong lập lại được đơn cho đúng kỳ đó", async () => {
+  const { period, invoice, target } = await issueOneInvoice(13, 80);
+
+  assert.equal(
+    (await json("/api/invoices/cancel", { invoiceId: invoice.id, reason: "Sai chỉ số" })).status,
+    200,
+  );
+
+  // Ràng buộc UNIQUE là index một phần bỏ qua đơn đã hủy, nếu không thì kỳ này
+  // bị khóa vĩnh viễn sau một lần lập nhầm.
+  const again = await preview(period);
+  const row = again.rows.find((item) => item.contractId === target.contractId);
+  assert.equal(row.existingInvoiceCode, null, "kỳ vẫn bị coi là đã lập");
+
+  const reissued = await json("/api/billing", {
+    period,
+    entries: [{ contractId: target.contractId, currentReading: row.previousReading + 55 }],
+  });
+  assert.equal(reissued.status, 201, `lập lại thất bại: ${await reissued.clone().text()}`);
+  assert.equal((await reissued.json()).created, 1);
+
+  const { invoices } = await (await authed(`/api/invoices?period=${period}`)).json();
+  const live = invoices.filter(
+    (item) => item.roomCode === target.roomCode && item.status !== "cancelled",
+  );
+  assert.equal(live.length, 1, "còn nhiều hơn một đơn còn hiệu lực cho cùng kỳ");
+
+  const electricity = live[0].items.find((item) => item.kind === "electricity");
+  assert.equal(electricity.quantity, 55);
+
+  // Mã đơn mới phải khác mã đơn đã hủy, để nhắc tới mã nào là rõ đơn nào.
+  assert.notEqual(live[0].code, invoice.code);
+  assert.match(live[0].code, /-L2$/);
+});
+
+test("không hủy đơn đã thu tiền", async () => {
+  const { invoice } = await issueOneInvoice(14);
+
+  assert.equal(
+    (await json("/api/payments", { invoiceId: invoice.id, amount: 100000 })).status,
+    201,
+  );
+
+  const response = await json("/api/invoices/cancel", {
+    invoiceId: invoice.id,
+    reason: "Thử hủy sau khi đã thu",
+  });
+
+  // Hủy đơn đã thu sẽ để lại khoản thanh toán treo không thuộc đơn nào.
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /Hoàn tiền cho khách trước/);
+});
+
+test("không hủy hai lần cùng một đơn", async () => {
+  const { invoice } = await issueOneInvoice(15);
+
+  assert.equal(
+    (await json("/api/invoices/cancel", { invoiceId: invoice.id, reason: "Lần một" })).status,
+    200,
+  );
+
+  const again = await json("/api/invoices/cancel", { invoiceId: invoice.id, reason: "Lần hai" });
+  assert.equal(again.status, 400);
+  assert.match((await again.json()).error, /đã hủy rồi/);
+});
+
+test("hủy đơn không làm mất mốc chỉ số điện đầu kỳ", async () => {
+  // Dùng đơn của kỳ hiện tại trong dữ liệu mẫu: chỉ số đầu kỳ là 1200, khác 0,
+  // nên nếu mốc bị mất thì bài kiểm thử phát hiện được.
+  const period = new Date().toISOString().slice(0, 7);
+  const before = await preview(period);
+  const target = before.rows[0];
+  const { invoices: list } = await (await authed(`/api/invoices?period=${period}`)).json();
+  const invoice = list.find((row) => row.roomCode === target.roomCode);
+
+  const startMark = Number(
+    invoice.items.find((item) => item.kind === "electricity").description.match(/\d+/)[0],
+  );
+  assert.ok(startMark > 0, "tiền đề: chỉ số đầu kỳ phải khác 0");
+  const readingBefore = startMark;
+
+  assert.equal(
+    (await json("/api/invoices/cancel", { invoiceId: invoice.id, reason: "Sai số" })).status,
+    200,
+  );
+
+  // Xóa hẳn bản ghi chỉ số thì mốc đầu kỳ biến mất, lập lại sẽ tính từ 0 và ra
+  // một hóa đơn điện khổng lồ.
+  const after = await preview(period);
+  const row = after.rows.find((item) => item.contractId === target.contractId);
+  assert.equal(row.previousReading, readingBefore, "mất mốc chỉ số đầu kỳ sau khi hủy");
+
+  // Lập lại với đúng chỉ số thật thì tiền điện phải hợp lý, không nhảy vọt.
+  assert.equal(
+    (await json("/api/billing", {
+      period,
+      entries: [{ contractId: target.contractId, currentReading: readingBefore + 90 }],
+    })).status,
+    201,
+  );
+
+  const { invoices } = await (await authed(`/api/invoices?period=${period}`)).json();
+  const live = invoices.find(
+    (item) => item.roomCode === target.roomCode && item.status !== "cancelled",
+  );
+  const electricity = live.items.find((item) => item.kind === "electricity");
+  assert.equal(electricity.quantity, 90, "tiền điện tính từ mốc sai");
+  assert.match(electricity.description, new RegExp(`${readingBefore} →`));
+});
+
+test("hủy đơn yêu cầu đăng nhập", async () => {
+  const response = await anonymous("/api/invoices/cancel", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ invoiceId: "abc", reason: "thử" }),
+  });
+  assert.equal(response.status, 401);
+});
+
+/* ------------------------------------------------------------------ */
 /* Kết xuất trang                                                     */
 /* ------------------------------------------------------------------ */
 
@@ -1911,7 +2102,9 @@ test("ký hợp đồng cho phòng đang giữ chỗ thì giải phóng chỗ gi
 
 test("ghi nhận thanh toán cập nhật đơn thu và sinh dòng thu trong sổ", async () => {
   const { invoices, summary } = await (await authed("/api/invoices")).json();
-  const unpaid = invoices.find((invoice) => invoice.outstanding > 0);
+  const unpaid = invoices.find(
+    (invoice) => invoice.outstanding > 0 && invoice.status !== "cancelled",
+  );
   assert.ok(unpaid, "dữ liệu mẫu phải có đơn còn nợ");
 
   const ledgerBefore = await (await authed("/api/ledger")).json();
@@ -1946,7 +2139,8 @@ test("ghi nhận thanh toán cập nhật đơn thu và sinh dòng thu trong s�
 
 test("không thu thêm được khi đơn đã thu đủ", async () => {
   const { invoices } = await (await authed("/api/invoices")).json();
-  const settled = invoices.find((invoice) => invoice.outstanding === 0);
+  // Nói rõ "đã thu đủ": đơn đã hủy cũng có còn nợ bằng 0 nhưng lỗi khác.
+  const settled = invoices.find((invoice) => invoice.status === "paid");
   assert.ok(settled, "dữ liệu mẫu phải có đơn đã thu đủ");
 
   const response = await json("/api/payments", { invoiceId: settled.id, amount: 1000 });
@@ -1956,7 +2150,9 @@ test("không thu thêm được khi đơn đã thu đủ", async () => {
 
 test("từ chối thanh toán lớn hơn phần còn nợ", async () => {
   const { invoices } = await (await authed("/api/invoices")).json();
-  const unpaid = invoices.find((invoice) => invoice.outstanding > 0);
+  const unpaid = invoices.find(
+    (invoice) => invoice.outstanding > 0 && invoice.status !== "cancelled",
+  );
 
   const response = await json("/api/payments", {
     invoiceId: unpaid.id,

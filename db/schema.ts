@@ -9,7 +9,14 @@
  * - Trạng thái lưu `text` kèm union type ở tầng TypeScript thay vì enum của CSDL.
  */
 import { relations, sql } from "drizzle-orm";
-import { index, integer, sqliteTable, text, unique } from "drizzle-orm/sqlite-core";
+import {
+  index,
+  integer,
+  sqliteTable,
+  text,
+  unique,
+  uniqueIndex,
+} from "drizzle-orm/sqlite-core";
 
 /** Cột thời gian dùng chung cho mọi bảng nghiệp vụ. */
 const timestamps = {
@@ -386,7 +393,11 @@ export const invoices = sqliteTable(
     ...timestamps,
   },
   (table) => [
-    unique("invoices_contract_period_unq").on(table.contractId, table.period),
+    // Unique một phần: đơn đã hủy không tính, nhờ vậy lập lại được cho cùng kỳ
+    // sau khi hủy đơn sai. Đơn hủy vẫn giữ nguyên để truy vết.
+    uniqueIndex("invoices_contract_period_unq")
+      .on(table.contractId, table.period)
+      .where(sql`${table.status} != 'cancelled'`),
     index("invoices_status_idx").on(table.status),
     index("invoices_period_idx").on(table.period),
   ],

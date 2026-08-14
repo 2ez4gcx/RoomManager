@@ -25,14 +25,18 @@ function orderedStatements() {
 /**
  * Nhận diện câu lệnh đã được áp từ lần chạy trước.
  *
- * SQLite báo mỗi loại một kiểu: `CREATE TABLE` cho "already exists", còn
- * `ALTER TABLE ADD COLUMN` cho "duplicate column name". Thiếu vế thứ hai thì
- * mọi migration thêm cột sẽ làm hỏng lần chạy lại.
+ * SQLite báo mỗi loại DDL một kiểu khác nhau:
+ *
+ * - `CREATE TABLE` / `CREATE INDEX` lặp → "already exists"
+ * - `ALTER TABLE ADD COLUMN` lặp → "duplicate column name"
+ * - `DROP INDEX` lặp → "no such index"
+ *
+ * Thiếu vế nào thì migration loại đó sẽ làm hỏng mọi lần chạy lại.
  *
  * D1 gói lỗi gốc vào `cause` và chỉ để "Failed query: ..." ở `message`, nên
  * phải duyệt cả chuỗi `cause`.
  */
-const ALREADY_APPLIED = /already exists|duplicate column name/i;
+const ALREADY_APPLIED = /already exists|duplicate column name|no such index/i;
 
 function alreadyApplied(error: unknown) {
   let current: unknown = error;

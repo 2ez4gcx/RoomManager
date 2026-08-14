@@ -76,6 +76,25 @@ Chỉ số điện phải do người chốt sổ nhập tay, nên luồng gồm
 rồi mới phát hành. Chỉ số cuối kỳ này thành chỉ số đầu kỳ sau. Không nhận chỉ
 số nhỏ hơn chỉ số cũ vì công tơ không quay ngược.
 
+## Hủy đơn thu
+
+Đơn không xóa cứng, chỉ chuyển `status = 'cancelled'` kèm người hủy và lý do.
+Đơn đã thu tiền thì không hủy được: sẽ để lại khoản thanh toán treo không thuộc
+đơn nào, mà hệ thống chưa có chức năng hoàn tiền.
+
+Ràng buộc UNIQUE `(contract_id, period)` là **index một phần** bỏ qua đơn đã
+hủy, nếu không thì một lần lập nhầm sẽ khóa kỳ đó vĩnh viễn. Mã đơn vẫn duy
+nhất toàn cục — lần lập lại được thêm hậu tố `-L2`, `-L3` — để khi báo khách
+"đơn DT-..." thì mã đó chỉ trỏ tới đúng một đơn.
+
+Hủy đơn **giữ nguyên** bản ghi `meter_readings` của kỳ đó, chỉ bỏ tham chiếu ở
+dòng hóa đơn. Xóa hẳn thì mốc chỉ số đầu kỳ biến mất và lần lập lại sẽ tính từ
+0, ra một hóa đơn điện khổng lồ. Khi lập lại, `previousValue` của chính bản ghi
+đó là mốc đầu kỳ, và bản ghi được ghi đè thay vì chèn mới.
+
+Đơn đã hủy có `outstanding` bằng 0 ở tầng truy vấn: để nguyên `total − paid`
+thì nó vẫn hiện "còn nợ", lệch với công nợ theo phòng vốn đã loại đơn hủy ra.
+
 `meter_readings.unit_price` lưu đơn giá tại thời điểm chốt, nên bảng giá đổi
 sau không làm đổi các đơn đã lập.
 

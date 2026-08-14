@@ -196,7 +196,10 @@ export async function listInvoices(period?: string): Promise<InvoiceView[]> {
   }
 
   return rows.map((row) => {
-    const outstanding = row.total - row.paidAmount;
+    // Đơn đã hủy không nợ gì cả. Để nguyên total − paid thì nó vẫn hiện "còn
+    // nợ", lệch với công nợ theo phòng vốn đã loại đơn hủy ra.
+    const outstanding = row.status === "cancelled" ? 0 : row.total - row.paidAmount;
+
     // "Quá hạn" không phải trạng thái lưu trong CSDL mà suy ra từ hạn thanh toán.
     const overdue =
       outstanding > 0 && row.dueDate < todayIso && row.status !== "cancelled";

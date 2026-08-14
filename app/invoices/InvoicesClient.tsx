@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  CheckCircle2, ChevronDown, CircleDollarSign, Download, FilePlus2,
+  Ban, CheckCircle2, ChevronDown, CircleDollarSign, Download, FilePlus2,
   MoreHorizontal, WalletCards, X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -130,6 +130,7 @@ export function InvoicesClient({
               <option>Chờ thanh toán</option>
               <option>Thanh toán một phần</option>
               <option>Quá hạn</option>
+              <option>Đã hủy</option>
             </select>
             <ChevronDown size={14} />
           </label>
@@ -183,6 +184,7 @@ function InvoiceModal({
   onPaid: () => void;
 }) {
   const [paying, setPaying] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -218,11 +220,39 @@ function InvoiceModal({
     }
   }
 
+  async function cancel(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!invoice) return;
+
+    setError("");
+    setBusy(true);
+    const form = new FormData(event.currentTarget);
+    try {
+      const response = await fetch("/api/invoices/cancel", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ invoiceId: invoice.id, reason: form.get("reason") }),
+      });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        setError(payload.error ?? "Không hủy được đơn thu.");
+        return;
+      }
+      setCancelling(false);
+      onPaid();
+    } catch {
+      setError("Không kết nối được máy chủ.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <Modal
       open={!!invoice}
       onClose={() => {
         setPaying(false);
+        setCancelling(false);
         setError("");
         onClose();
       }}
@@ -258,7 +288,28 @@ function InvoiceModal({
             </div>
           </div>
 
-          {paying ? (
+          {cancelling ? (
+            <form onSubmit={cancel}>
+              <div className="form-section-title">Hủy đơn thu</div>
+              <p className="modal-hint">
+                Đơn không bị xóa mà chuyển sang trạng thái đã hủy, vẫn tra được về sau.
+                Sau khi hủy, kỳ này lập lại đơn được — dùng khi nhập nhầm chỉ số điện.
+              </p>
+              <label>
+                Lý do hủy
+                <input name="reason" required placeholder="Nhập nhầm chỉ số điện, lập trùng..." />
+              </label>
+              {error && <p className="form-error" role="alert">{error}</p>}
+              <div className="modal-actions">
+                <button className="secondary-button" type="button" onClick={() => setCancelling(false)}>
+                  Quay lại
+                </button>
+                <button className="submit-button danger" type="submit" disabled={busy}>
+                  <Ban size={16} /> {busy ? "Đang hủy..." : "Xác nhận hủy đơn"}
+                </button>
+              </div>
+            </form>
+          ) : paying ? (
             <form onSubmit={submit}>
               <div className="form-section-title">Ghi nhận thanh toán</div>
               <label>
@@ -289,13 +340,29 @@ function InvoiceModal({
               </button>
             </form>
           ) : (
-            <div className="modal-actions">
-              {invoice.outstanding > 0 ? (
-                <button className="primary-button" onClick={() => setPaying(true)}>Ghi nhận thanh toán</button>
-              ) : (
-                <p className="modal-hint">Đơn này đã thu đủ.</p>
-              )}
-            </div>
+            <>
+              {error && <p className="form-error" role="alert">{error}</p>}
+              <div className="modal-actions">
+                {invoice.status === "cancelled" ? (
+                  <p className="modal-hint">Đơn này đã hủy, không còn tính vào doanh thu hay công nợ.</p>
+                ) : (
+                  <>
+                    {invoice.paidAmount === 0 && (
+                      <button className="secondary-button" type="button" onClick={() => setCancelling(true)}>
+                        <Ban size={15} /> Hủy đơn
+                      </button>
+                    )}
+                    {invoice.outstanding > 0 ? (
+                      <button className="primary-button" onClick={() => setPaying(true)}>
+                        Ghi nhận thanh toán
+                      </button>
+                    ) : (
+                      <p className="modal-hint">Đơn này đã thu đủ.</p>
+                    )}
+                  </>
+                )}
+              </div>
+            </>
           )}
         </>
       )}

@@ -8,7 +8,7 @@
  * chốt sổ nhập tay, và sai một chỉ số là sai tiền của cả tháng. Vì vậy luồng
  * gồm hai bước — xem trước rồi mới phát hành.
  */
-import { and, desc, eq, inArray, isNull, lte, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNull, lte, ne, or, sql } from "drizzle-orm";
 import { getDb } from "./index";
 import { newId } from "./ids";
 import { insertChunked, ValidationError, writeAudit } from "./internal";
@@ -165,12 +165,20 @@ export async function billingPreview(period: string): Promise<BillingPreview> {
     db
       .select({ contractId: invoices.contractId, code: invoices.code })
       .from(invoices)
-      .where(and(eq(invoices.period, period), inArray(invoices.contractId, contractIds))),
+      // Bỏ qua đơn đã hủy: hủy xong phải lập lại được cho đúng kỳ đó.
+      .where(
+        and(
+          eq(invoices.period, period),
+          inArray(invoices.contractId, contractIds),
+          ne(invoices.status, "cancelled"),
+        ),
+      ),
     // Chỉ số gần nhất của mỗi phòng, kể cả của kỳ cũ hơn kỳ liền trước.
     db
       .select({
         roomId: meterReadings.roomId,
         period: meterReadings.period,
+        previousValue: meterReadings.previousValue,
         currentValue: meterReadings.currentValue,
       })
       .from(meterReadings)
@@ -192,8 +200,19 @@ export async function billingPreview(period: string): Promise<BillingPreview> {
 
   // Đã sắp theo phòng rồi kỳ giảm dần, nên bản ghi đầu tiên của mỗi phòng là mới nhất.
   const latestReading = new Map<string, number>();
+  // Chỉ số của CHÍNH kỳ đang lập, nếu có, là do lần lập trước để lại (đơn đã bị
+  // hủy). `previousValue` của nó mới là mốc đầu kỳ đúng — dùng chỉ số của kỳ
+  // trước đó nữa sẽ tính thừa, mà bỏ qua hẳn thì tính từ 0.
+  const startOfThisPeriod = new Map<string, number>();
+
   for (const reading of lastReadings) {
-    if (reading.period >= period) continue;
+    if (reading.period === period) {
+      if (!startOfThisPeriod.has(reading.roomId)) {
+        startOfThisPeriod.set(reading.roomId, reading.previousValue);
+      }
+      continue;
+    }
+    if (reading.period > period) continue;
     if (!latestReading.has(reading.roomId)) {
       latestReading.set(reading.roomId, reading.currentValue);
     }
@@ -225,7 +244,8 @@ export async function billingPreview(period: string): Promise<BillingPreview> {
         tenantName: row.tenantName,
         rent: rent.amount,
         rentNote: rent.note,
-        previousReading: latestReading.get(row.roomId) ?? 0,
+        previousReading:
+          startOfThisPeriod.get(row.roomId) ?? latestReading.get(row.roomId) ?? 0,
         occupants: occupantsByContract.get(row.contractId) ?? 1,
         dueDate: dueDateFor(period, row.billingDay),
         existingInvoiceCode: existingByContract.get(row.contractId) ?? null,
@@ -268,6 +288,52 @@ export async function issueInvoices(input: IssueInput): Promise<IssueResult> {
   const db = getDb();
   const preview = await billingPreview(input.period);
   const byContract = new Map(preview.rows.map((row) => [row.contractId, row]));
+
+  // Mã đơn phải duy nhất toàn hệ thống, kể cả so với đơn đã hủy: khi báo khách
+  // "đơn DT-..." thì mã đó chỉ được trỏ tới đúng một đơn.
+  const usedCodes = new Set(
+    (
+      await db
+        .select({ code: invoices.code })
+        .from(invoices)
+        .where(eq(invoices.period, input.period))
+    ).map((row) => row.code),
+  );
+
+  /** `DT-202609-101-AP`, rồi `-L2`, `-L3`... nếu kỳ đó từng lập rồi hủy. */
+  function nextInvoiceCode(row: BillingRow) {
+    const base = `DT-${input.period.replace("-", "")}-${row.roomNumber}-${row.propertyCode}`;
+    let code = base;
+    for (let attempt = 2; usedCodes.has(code); attempt += 1) {
+      code = `${base}-L${attempt}`;
+    }
+    usedCodes.add(code);
+    return code;
+  }
+
+  // Chỉ số của chính kỳ này có thể đã tồn tại (đơn cũ bị hủy rồi lập lại).
+  // Phải dùng lại đúng id đang có: `onConflictDoUpdate` giữ nguyên id của bản
+  // ghi cũ, sinh id mới rồi trỏ dòng đơn vào đó sẽ vỡ khóa ngoại.
+  const roomIds = input.entries
+    .map((entry) => byContract.get(entry.contractId)?.roomId)
+    .filter((id): id is string => Boolean(id));
+
+  const readingIdByRoom = new Map(
+    roomIds.length === 0
+      ? []
+      : (
+          await db
+            .select({ id: meterReadings.id, roomId: meterReadings.roomId })
+            .from(meterReadings)
+            .where(
+              and(
+                eq(meterReadings.period, input.period),
+                eq(meterReadings.kind, "electricity"),
+                inArray(meterReadings.roomId, roomIds),
+              ),
+            )
+        ).map((row) => [row.roomId, row.id] as const),
+  );
 
   const invoiceRows: Array<typeof invoices.$inferInsert> = [];
   const itemRows: Array<typeof invoiceItems.$inferInsert> = [];
@@ -314,7 +380,7 @@ export async function issueInvoices(input: IssueInput): Promise<IssueResult> {
 
     let readingId: string | null = null;
     if (kwh > 0 || currentReading > 0) {
-      readingId = newId("mtr");
+      readingId = readingIdByRoom.get(row.roomId) ?? newId("mtr");
       readingRows.push({
         id: readingId,
         roomId: row.roomId,
@@ -331,7 +397,7 @@ export async function issueInvoices(input: IssueInput): Promise<IssueResult> {
 
     invoiceRows.push({
       id: invoiceId,
-      code: `DT-${input.period.replace("-", "")}-${row.roomNumber}-${row.propertyCode}`,
+      code: nextInvoiceCode(row),
       contractId: row.contractId,
       roomId: row.roomId,
       period: input.period,
@@ -395,7 +461,24 @@ export async function issueInvoices(input: IssueInput): Promise<IssueResult> {
   }
 
   // Ghi chỉ số trước: dòng điện của đơn trỏ tới bản ghi chỉ số.
-  await insertChunked(meterReadings, readingRows, (chunk) => db.insert(meterReadings).values(chunk));
+  //
+  // Ghi đè nếu kỳ này đã có chỉ số — xảy ra khi đơn cũ bị hủy rồi lập lại.
+  // Bản ghi cũ được giữ nguyên lúc hủy để không mất mốc chỉ số đầu kỳ.
+  await insertChunked(meterReadings, readingRows, (chunk) =>
+    db
+      .insert(meterReadings)
+      .values(chunk)
+      .onConflictDoUpdate({
+        target: [meterReadings.roomId, meterReadings.kind, meterReadings.period],
+        set: {
+          previousValue: sql`excluded.previous_value`,
+          currentValue: sql`excluded.current_value`,
+          unitPrice: sql`excluded.unit_price`,
+          readAt: sql`excluded.read_at`,
+          updatedAt: sql`(unixepoch() * 1000)`,
+        },
+      }),
+  );
   await insertChunked(invoices, invoiceRows, (chunk) => db.insert(invoices).values(chunk));
   await insertChunked(invoiceItems, itemRows, (chunk) => db.insert(invoiceItems).values(chunk));
 
