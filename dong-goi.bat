@@ -37,7 +37,7 @@ if not "!DIRTY!"=="0" (
   echo  [CANH BAO] Dang co thay doi chua commit.
   echo  Goi chi chua nhung gi da commit, phan sua moi se KHONG co trong goi.
   echo.
-  set /p GOON="  Van dong goi? (c/k): "
+  set /p GOON="  Van dong goi? Go c roi Enter: "
   if /i not "!GOON!"=="c" (
     echo  Da huy.
     pause
@@ -57,8 +57,9 @@ if errorlevel 1 (
 echo.
 echo  Dang kiem tra goi khong chua du lieu rieng...
 rem Goi chua dung nhung file git dang theo doi, nen kiem tra danh sach do la du.
+rem .env.example la file mau, khong chua bi mat nao - phai chua lai.
 git ls-files > "%TEMP%\rm-files.txt"
-findstr /b /i /c:".wrangler/" /c:".env" /c:"node_modules/" "%TEMP%\rm-files.txt" > "%TEMP%\rm-bad.txt"
+findstr /b /i /c:".wrangler/" /c:".env" /c:"node_modules/" "%TEMP%\rm-files.txt" | findstr /v /b /i /c:".env.example" > "%TEMP%\rm-bad.txt"
 for %%f in ("%TEMP%\rm-bad.txt") do set BADSIZE=%%~zf
 if not "!BADSIZE!"=="0" (
   echo  [LOI] Goi chua file khong duoc phep:
