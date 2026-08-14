@@ -7,6 +7,7 @@
  */
 import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import { getDb } from "./index";
+import { pendingReminderCount } from "./reminders";
 import {
   bookingRequests,
   contracts,
@@ -276,6 +277,8 @@ export type DashboardSummary = {
   overdueInvoices: number;
   newBookings: number;
   expiringContracts: number;
+  /** Lời nhắc nợ chưa xử lý. */
+  pendingReminders: number;
   byProperty: Array<{
     id: string;
     name: string;
@@ -290,7 +293,10 @@ export async function dashboardSummary(): Promise<DashboardSummary> {
   const period = new Date().toISOString().slice(0, 7);
   const todayIso = new Date().toISOString().slice(0, 10);
 
-  const roomViews = await listRooms();
+  const [roomViews, pendingReminders] = await Promise.all([
+    listRooms(),
+    pendingReminderCount(),
+  ]);
 
   const [[periodTotals], [newBookingRow], [expiringRow], [overdueRow]] = await Promise.all([
     db
@@ -361,6 +367,7 @@ export async function dashboardSummary(): Promise<DashboardSummary> {
     overdueInvoices: Number(overdueRow?.count ?? 0),
     newBookings: Number(newBookingRow?.count ?? 0),
     expiringContracts: Number(expiringRow?.count ?? 0),
+    pendingReminders,
     byProperty: [...propertyMap.values()].map((entry) => ({
       ...entry,
       rate: entry.total ? Math.round((entry.occupied / entry.total) * 100) : 0,

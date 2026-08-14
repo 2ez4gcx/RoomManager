@@ -13,6 +13,7 @@ Toàn bộ giao diện đã chạy trên dữ liệu thật, có đăng nhập.
 - **Lập đơn thu** — chốt sổ cuối kỳ: nhập chỉ số điện từng phòng, xem tiền tính lại ngay, rồi phát hành đơn cho tất cả phòng đang thuê trong một lượt.
 - **Đơn thu** — xem chi tiết từng dòng (tiền phòng, điện, nước, dịch vụ), ghi nhận thanh toán một phần hoặc toàn phần, **hủy đơn lập nhầm** rồi lập lại, lọc theo kỳ.
 - **Thu chi** — sổ thu chi, biểu đồ 6 tháng, cơ cấu chi; thanh toán tự sinh dòng thu.
+- **Nhắc nợ** — cron chạy 8 giờ sáng mỗi ngày, tự rà ai sắp đến hạn/đến hạn/quá hạn và soạn sẵn tin nhắn; chủ nhà gửi qua Zalo hoặc gọi điện rồi đánh dấu.
 - **Xuất Excel** — danh sách khách thuê, đơn thu theo kỳ, sổ thu chi kèm cơ cấu chi. File `.xlsx` thật, mở thẳng bằng Excel; cột tiền là số nên cộng được ngay.
 - **Cài đặt** — bảng giá điện/nước/dịch vụ, chu kỳ thu, thời gian giữ phòng, đổi mật khẩu, bật/tắt xác thực hai bước.
 - **Tài khoản** (chỉ chủ nhà) — tạo tài khoản nhân viên, đổi vai trò, khóa/mở khóa, đặt lại mật khẩu, cấp link quên mật khẩu.
@@ -24,8 +25,7 @@ Các ràng buộc nghiệp vụ đang được kiểm thử tự động: không
 
 **Chưa làm:**
 
-- Nút "Gửi nhắc" mới là giao diện, chưa hoạt động.
-- Chưa nhắc nợ tự động; cần dịch vụ gửi tin (Zalo OA hoặc email), hiện chưa cấu hình.
+- Hệ thống soạn sẵn tin nhắc nợ nhưng **chưa tự gửi** cho khách: Zalo OA phải duyệt hồ sơ, SMS và email đều cần tài khoản dịch vụ trả phí.
 - Chưa chốt nền tảng lâu dài: đang chạy Cloudflare D1, phương án VPS/PostgreSQL vẫn để ngỏ.
 - Chưa cấu hình tên miền hay môi trường chạy thật; mới chạy ở máy local. Hướng dẫn đưa lên Cloudflare có ở [docs/DEPLOY-CLOUDFLARE.md](docs/DEPLOY-CLOUDFLARE.md).
 
@@ -75,7 +75,7 @@ Route `/api/dev/setup` mặc định bị khóa ngoài môi trường dev; bản
 npm test
 ```
 
-Chạy typecheck, build, rồi kiểm thử bản build trong Miniflare (workerd thật kèm D1 thật): 116 bài, gồm xác thực, quyền truy cập, ràng buộc nghiệp vụ và kiểm tra trang công khai không lộ dữ liệu khách thuê.
+Chạy typecheck, build, rồi kiểm thử bản build trong Miniflare (workerd thật kèm D1 thật): 127 bài, gồm xác thực, quyền truy cập, ràng buộc nghiệp vụ và kiểm tra trang công khai không lộ dữ liệu khách thuê.
 
 ```bash
 npm run lint
@@ -124,6 +124,7 @@ Sinh migration mới vào `drizzle/`. Khi deploy, control plane tự áp SQL nà
 | `db/billing.ts` | Lập đơn thu theo kỳ, chia tiền theo ngày |
 | `db/move-out.ts` | Trả phòng và tất toán tiền cọc |
 | `db/invoice-cancel.ts` | Hủy đơn thu lập nhầm |
+| `db/reminders.ts` | Nhắc nợ: rà theo lịch và soạn tin |
 | `db/xlsx.ts`, `db/zip.ts` | Sinh file Excel, không dùng thư viện ngoài |
 | `db/password-reset.ts` | Link đặt lại mật khẩu dùng một lần |
 | `db/password-hash.ts` | Băm mật khẩu, dùng chung với script cứu hộ |

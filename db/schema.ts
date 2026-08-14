@@ -434,6 +434,46 @@ export const invoiceItems = sqliteTable(
   (table) => [index("invoice_items_invoice_idx").on(table.invoiceId)],
 );
 
+/**
+ * Nhắc nợ.
+ *
+ * Mỗi bản ghi là một lần hệ thống xác định "đơn này cần nhắc", kèm nội dung tin
+ * soạn sẵn. Gửi đi bằng cách nào là việc riêng: hiện chủ nhà tự chuyển qua Zalo
+ * hoặc gọi điện, và bấm đánh dấu đã nhắc.
+ *
+ * Số tiền và hạn được chụp lại tại thời điểm tạo, để tin nhắn đã soạn không đổi
+ * nội dung khi khách trả bớt một phần.
+ */
+export type ReminderKind = "before_due" | "due" | "overdue";
+
+export const reminders = sqliteTable(
+  "reminders",
+  {
+    id: text("id").primaryKey(),
+    invoiceId: text("invoice_id")
+      .notNull()
+      .references(() => invoices.id, { onDelete: "cascade" }),
+    kind: text("kind").$type<ReminderKind>().notNull(),
+    /** Ngày hệ thống quyết định cần nhắc, dạng `YYYY-MM-DD`. */
+    scheduledFor: text("scheduled_for").notNull(),
+    dueDate: text("due_date").notNull(),
+    amount: integer("amount").notNull(),
+    message: text("message").notNull(),
+    sentAt: integer("sent_at", { mode: "timestamp_ms" }),
+    /** Chủ nhà đã nhắc bằng kênh nào; ghi lại để sau còn đối chiếu. */
+    channel: text("channel"),
+    sentBy: text("sent_by").references(() => users.id),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (table) => [
+    // Một đơn chỉ sinh một lời nhắc mỗi ngày, tránh nhắc dồn dập.
+    unique("reminders_invoice_day_unq").on(table.invoiceId, table.scheduledFor),
+    index("reminders_pending_idx").on(table.sentAt, table.scheduledFor),
+  ],
+);
+
 /* ------------------------------------------------------------------ */
 /* Thanh toán                                                         */
 /* ------------------------------------------------------------------ */

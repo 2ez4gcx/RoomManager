@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  ArrowRight, BedDouble, Building2, CalendarDays, CreditCard, FilePlus2, FileText,
+  ArrowRight, BedDouble, BellRing, Building2, CalendarDays, CreditCard, FilePlus2, FileText,
   LayoutDashboard, LogOut, Menu, Plus, Search, Settings, UserCog, Users, X,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
@@ -18,6 +18,7 @@ const navItems: Array<{ label: string; icon: typeof LayoutDashboard; href: strin
   { label: "Lập đơn thu", icon: FilePlus2, href: "/lap-don-thu" },
   { label: "Đơn & doanh thu", icon: FileText, href: "/invoices" },
   { label: "Thu chi", icon: CreditCard, href: "/cashflow" },
+  { label: "Nhắc nợ", icon: BellRing, href: "/nhac-no" },
 ];
 
 type AppShellProps = {
@@ -30,9 +31,11 @@ type AppShellProps = {
   onAction?: () => void;
   /** Số yêu cầu đặt phòng chưa xử lý; bỏ trống thì không hiện huy hiệu. */
   newBookingCount?: number;
+  /** Số lời nhắc nợ chưa xử lý. */
+  pendingReminderCount?: number;
 };
 
-export function AppShell({ children, currentUser, searchValue = "", onSearch, searchPlaceholder = "Tìm phòng, khách thuê...", actionLabel = "Tạo đơn thu", onAction, newBookingCount }: AppShellProps) {
+export function AppShell({ children, currentUser, searchValue = "", onSearch, searchPlaceholder = "Tìm phòng, khách thuê...", actionLabel = "Tạo đơn thu", onAction, newBookingCount, pendingReminderCount }: AppShellProps) {
   const pathname = usePathname();
   const [mobileNav, setMobileNav] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
@@ -57,6 +60,9 @@ export function AppShell({ children, currentUser, searchValue = "", onSearch, se
             <Link className={`nav-item ${pathname === href ? "active" : ""}`} key={label} href={href} onClick={() => setMobileNav(false)}>
               <Icon size={18} /><span>{label}</span>
               {href === "/bookings" && !!newBookingCount && <span className="nav-badge">{newBookingCount}</span>}
+              {href === "/nhac-no" && !!pendingReminderCount && (
+                <span className="nav-badge">{pendingReminderCount}</span>
+              )}
             </Link>
           ))}
           <p className="nav-label nav-label-spaced">HỆ THỐNG</p>

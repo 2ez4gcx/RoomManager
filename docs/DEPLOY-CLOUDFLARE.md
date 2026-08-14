@@ -146,6 +146,15 @@ Chạy đủ danh sách này trước khi giao cho ai dùng:
 - [ ] Thêm một nhà, một phòng, một khách thuê thật rồi kiểm tra số liệu ở trang
       Tổng quan.
 
+## 7b. Kiểm tra lịch chạy tự động
+
+Bản build khai báo sẵn cron `0 1 * * *` — 08:00 giờ Việt Nam mỗi ngày — để rà
+nhắc nợ. Sau khi deploy, xem trong bảng điều khiển: **Workers & Pages →
+room-manager → Settings → Trigger Events**, phải thấy đúng lịch này.
+
+Không cần chờ tới sáng mai mới biết chạy đúng hay không: mở trang **Nhắc nợ**
+rồi bấm *Rà lại ngay*, nó gọi cùng một hàm mà cron gọi.
+
 ## 8. Tên miền riêng
 
 *Chưa kiểm chứng — cần tài khoản Cloudflare có tên miền.*

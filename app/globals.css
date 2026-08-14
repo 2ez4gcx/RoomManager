@@ -350,3 +350,17 @@ input:disabled, select:disabled { background: #f4f2ec; color: #8b938f; cursor: n
 .settle-result div:last-child { border-bottom: 0; }
 .settle-result .settle-total { background: #eaf5ef; font-weight: 700; font-size: 13px; }
 .settle-list { margin: 13px 0 !important; }
+
+/* Nhắc nợ */
+.reminder-list { display: flex; flex-direction: column; gap: 13px; }
+.reminder-card { background: var(--paper); border: 1px solid var(--line); border-radius: 13px; padding: 16px; box-shadow: 0 3px 12px #3c493f07; }
+.reminder-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 11px; }
+.reminder-head > div:first-child { display: flex; flex-direction: column; gap: 5px; align-items: flex-start; }
+.reminder-head strong { font-size: 14px; }
+.reminder-head span { color: var(--muted); font-size: 10px; }
+.reminder-amount { text-align: right; display: flex; flex-direction: column; gap: 3px; }
+.reminder-amount strong { font-family: var(--font-display), sans-serif; font-size: 17px; color: var(--forest); }
+.reminder-message { margin: 0 0 12px; padding: 12px 14px; background: #f4f2ec; border-radius: 9px; border-left: 3px solid var(--gold); font-family: inherit; font-size: 11px; line-height: 1.7; white-space: pre-wrap; user-select: all; }
+.reminder-actions { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
+.reminder-actions .secondary-button, .reminder-actions .primary-button { padding: 7px 11px; font-size: 10px; }
+.reminder-spacer { flex: 1; min-width: 8px; }

@@ -17,6 +17,7 @@
 | Đơn thu | `invoices`, `invoice_items` | Một đơn theo kỳ và các dòng tiền phòng/điện/nước/phụ thu |
 | Thanh toán | `payments`, `payment_allocations` | Tiền thực nhận và phần được cấn vào từng đơn |
 | Vận hành | `meter_readings`, `maintenance_requests` | Chỉ số điện nước và bảo trì |
+| Nhắc nợ | `reminders` | Lời nhắc đã sinh, nội dung tin và kênh đã gửi |
 | Sổ quỹ | `ledger_entries` | Thu chi vận hành; khoản thu tiền phòng sinh từ `payments` |
 | Cấu hình | `settings` | Bảng giá và thông tin nhà trọ, chủ nhà tự sửa được |
 | Kiểm soát | `audit_logs` | Lịch sử sửa/xóa/đổi trạng thái |
@@ -75,6 +76,26 @@ Hợp đồng bắt đầu giữa kỳ thì tiền phòng **chia theo ngày**, l
 Chỉ số điện phải do người chốt sổ nhập tay, nên luồng gồm hai bước: xem trước
 rồi mới phát hành. Chỉ số cuối kỳ này thành chỉ số đầu kỳ sau. Không nhận chỉ
 số nhỏ hơn chỉ số cũ vì công tơ không quay ngược.
+
+## Nhắc nợ
+
+Cron chạy 01:00 UTC (08:00 giờ Việt Nam) mỗi ngày, rà các đơn chưa thu đủ và
+sinh lời nhắc cho ba mốc: trước hạn `reminder.daysBefore` ngày, đúng ngày hạn,
+và quá hạn thì lặp mỗi `reminder.repeatEveryDays` ngày.
+
+Quá hạn cố ý **không** nhắc mỗi ngày — nhắc dồn dập làm khách khó chịu và chính
+chủ nhà cũng ngại mở danh sách.
+
+Ràng buộc UNIQUE `(invoice_id, scheduled_for)` bảo đảm mỗi đơn chỉ có một lời
+nhắc mỗi ngày, kể cả khi cron chạy lại hoặc chủ nhà bấm "Rà lại ngay".
+
+Số tiền và hạn được **chụp lại** vào bản ghi, để tin đã soạn không đổi nội dung
+khi khách trả bớt một phần sau đó.
+
+Phần GỬI chưa tự động: Zalo OA phải duyệt hồ sơ, SMS và email đều cần tài khoản
+dịch vụ trả phí. Hệ thống soạn sẵn nội dung, chủ nhà chuyển qua Zalo hoặc gọi
+điện rồi bấm đánh dấu kênh đã dùng. Khi có dịch vụ, chỉ cần thêm bước gửi vào
+`generateReminders`; phần rà soát, chống trùng và lưu vết giữ nguyên.
 
 ## Hủy đơn thu
 

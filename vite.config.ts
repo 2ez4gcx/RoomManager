@@ -22,6 +22,9 @@ const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
 const localBindingConfig = {
   main: "./worker/index.ts",
   compatibility_flags: ["nodejs_compat"],
+  // Rà nhắc nợ mỗi ngày. 01:00 UTC là 08:00 giờ Việt Nam — đầu giờ làm việc,
+  // để chủ nhà mở máy lên là đã có danh sách cần nhắc.
+  triggers: { crons: ["0 1 * * *"] },
   d1_databases: d1
     ? [
         {

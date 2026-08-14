@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  ArrowRight, BedDouble, Building2, CalendarDays, ChevronDown,
+  ArrowRight, BedDouble, BellRing, Building2, CalendarDays, ChevronDown,
   CircleDollarSign, Clock3, FileText,
 } from "lucide-react";
 import { useMemo, useState } from "react";
@@ -57,7 +57,11 @@ export function DashboardClient({
   const today = new Date();
   const heading = `${WEEKDAYS[today.getDay()]}, ${today.getDate()} THÁNG ${today.getMonth() + 1}`;
   const period = `${String(today.getMonth() + 1).padStart(2, "0")}/${today.getFullYear()}`;
-  const pendingTasks = summary.overdueInvoices + summary.newBookings + summary.expiringContracts;
+  const pendingTasks =
+    summary.overdueInvoices +
+    summary.newBookings +
+    summary.expiringContracts +
+    summary.pendingReminders;
 
   return (
     <AppShell
@@ -65,6 +69,7 @@ export function DashboardClient({
       searchValue={query}
       onSearch={setQuery}
       newBookingCount={summary.newBookings}
+      pendingReminderCount={summary.pendingReminders}
     >
       <div className="content">
         <PageHeader
@@ -189,6 +194,16 @@ export function DashboardClient({
                   <a href="/bookings">
                     <span className="task-icon booking"><CalendarDays size={16} /></span>
                     <div><strong>{summary.newBookings} yêu cầu đặt mới</strong><small>Chưa được xử lý</small></div>
+                    <ArrowRight size={15} />
+                  </a>
+                )}
+                {summary.pendingReminders > 0 && (
+                  <a href="/nhac-no">
+                    <span className="task-icon overdue"><BellRing size={16} /></span>
+                    <div>
+                      <strong>{summary.pendingReminders} lời nhắc nợ chờ gửi</strong>
+                      <small>Tin đã soạn sẵn, chỉ việc gửi</small>
+                    </div>
                     <ArrowRight size={15} />
                   </a>
                 )}

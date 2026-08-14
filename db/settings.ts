@@ -16,6 +16,8 @@ export const SETTING_KEYS = [
   "rate.parking",
   "billing.defaultDay",
   "booking.holdDays",
+  "reminder.daysBefore",
+  "reminder.repeatEveryDays",
 ] as const;
 
 export type SettingKey = (typeof SETTING_KEYS)[number];
@@ -28,6 +30,8 @@ const NUMERIC_KEYS = new Set<string>([
   "rate.parking",
   "billing.defaultDay",
   "booking.holdDays",
+  "reminder.daysBefore",
+  "reminder.repeatEveryDays",
 ]);
 
 export const DEFAULT_SETTINGS: Record<SettingKey, string> = {
@@ -41,6 +45,10 @@ export const DEFAULT_SETTINGS: Record<SettingKey, string> = {
   "rate.parking": "100000",
   "billing.defaultDay": "5",
   "booking.holdDays": "3",
+  /** Nhắc trước hạn bao nhiêu ngày. */
+  "reminder.daysBefore": "3",
+  /** Quá hạn thì cứ bao nhiêu ngày nhắc lại một lần. */
+  "reminder.repeatEveryDays": "3",
 };
 
 export async function getSettings(): Promise<Record<SettingKey, string>> {

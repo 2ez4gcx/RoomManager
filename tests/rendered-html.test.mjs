@@ -1916,6 +1916,203 @@ test("xuất Excel yêu cầu đăng nhập", async () => {
 });
 
 /* ------------------------------------------------------------------ */
+/* Nhắc nợ tự động                                                    */
+/* ------------------------------------------------------------------ */
+
+/** Chạy vòng rà với một ngày giả lập, để kiểm tra từng mốc nhắc. */
+async function runReminders(today) {
+  const response = await json("/api/reminders", today ? { today } : {});
+  assert.equal(response.status, 200, "rà nhắc nợ thất bại");
+  return response.json();
+}
+
+async function pendingReminders() {
+  const { reminders } = await (await authed("/api/reminders")).json();
+  return reminders;
+}
+
+/** Đơn còn nợ bất kỳ, kèm hạn thanh toán, để tính ngày giả lập quanh nó. */
+async function anyUnpaidInvoice() {
+  const period = new Date().toISOString().slice(0, 7);
+  const { invoices } = await (await authed(`/api/invoices?period=${period}`)).json();
+  const invoice = invoices.find(
+    (row) => row.outstanding > 0 && row.status !== "cancelled",
+  );
+  assert.ok(invoice, "dữ liệu mẫu phải có đơn còn nợ");
+  return invoice;
+}
+
+/** Cộng/trừ ngày cho một chuỗi `YYYY-MM-DD`. */
+function shiftDate(iso, days) {
+  const date = new Date(`${iso}T00:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+test("đúng ngày đến hạn thì sinh lời nhắc mốc đến hạn", async () => {
+  const invoice = await anyUnpaidInvoice();
+  const result = await runReminders(invoice.dueDate);
+  assert.ok(result.created > 0, "không sinh lời nhắc nào");
+
+  const list = await pendingReminders();
+  const reminder = list.find((item) => item.invoiceCode === invoice.code);
+  assert.ok(reminder, `không thấy lời nhắc cho ${invoice.code}`);
+  assert.equal(reminder.kind, "due");
+  assert.equal(reminder.kindLabel, "Đến hạn hôm nay");
+  assert.equal(reminder.amount, invoice.outstanding, "số tiền nhắc phải là phần còn nợ");
+
+  // Nội dung phải có đủ thông tin khách cần để đối chiếu.
+  assert.match(reminder.message, new RegExp(reminder.tenantName));
+  assert.match(reminder.message, new RegExp(reminder.roomCode));
+  assert.match(reminder.message, /hôm nay là hạn thanh toán/i);
+});
+
+test("rà lại trong cùng ngày không tạo lời nhắc trùng", async () => {
+  const invoice = await anyUnpaidInvoice();
+  const before = (await pendingReminders()).length;
+
+  const again = await runReminders(invoice.dueDate);
+  assert.equal(again.created, 0, "tạo thêm lời nhắc trùng trong cùng ngày");
+  assert.ok(again.skipped > 0);
+
+  assert.equal((await pendingReminders()).length, before);
+});
+
+test("trước hạn trong ngưỡng thì nhắc, ngoài ngưỡng thì thôi", async () => {
+  const invoice = await anyUnpaidInvoice();
+
+  // Mặc định nhắc trước 3 ngày. Cách 10 ngày thì chưa tới lượt.
+  const early = await runReminders(shiftDate(invoice.dueDate, -10));
+  const list = await pendingReminders();
+  assert.ok(
+    !list.some(
+      (item) => item.invoiceCode === invoice.code && item.scheduledFor === shiftDate(invoice.dueDate, -10),
+    ),
+    "nhắc quá sớm so với ngưỡng",
+  );
+  assert.ok(early.created >= 0);
+
+  // Cách 2 ngày thì trong ngưỡng.
+  const soon = shiftDate(invoice.dueDate, -2);
+  await runReminders(soon);
+  const after = await pendingReminders();
+  const reminder = after.find(
+    (item) => item.invoiceCode === invoice.code && item.scheduledFor === soon,
+  );
+  assert.ok(reminder, "không nhắc dù đã trong ngưỡng trước hạn");
+  assert.equal(reminder.kind, "before_due");
+  assert.match(reminder.message, /còn 2 ngày/);
+});
+
+test("quá hạn thì nhắc lại theo chu kỳ chứ không nhắc mỗi ngày", async () => {
+  const invoice = await anyUnpaidInvoice();
+
+  // Chu kỳ mặc định 3 ngày: quá hạn 3 và 6 ngày thì nhắc, 4 và 5 thì không.
+  const results = {};
+  for (const late of [3, 4, 5, 6]) {
+    const day = shiftDate(invoice.dueDate, late);
+    await runReminders(day);
+    const list = await pendingReminders();
+    results[late] = list.some(
+      (item) => item.invoiceCode === invoice.code && item.scheduledFor === day,
+    );
+  }
+
+  assert.equal(results[3], true, "quá hạn 3 ngày phải nhắc");
+  assert.equal(results[4], false, "nhắc dồn dập mỗi ngày");
+  assert.equal(results[5], false, "nhắc dồn dập mỗi ngày");
+  assert.equal(results[6], true, "quá hạn 6 ngày phải nhắc lại");
+});
+
+test("nội dung nhắc quá hạn nói rõ số ngày trễ", async () => {
+  const invoice = await anyUnpaidInvoice();
+  const list = await pendingReminders();
+  const overdue = list.find(
+    (item) => item.invoiceCode === invoice.code && item.kind === "overdue",
+  );
+  assert.ok(overdue, "chưa có lời nhắc quá hạn nào");
+  assert.match(overdue.message, /đã quá hạn \d+ ngày/);
+  assert.match(overdue.message, /nếu đã chuyển khoản rồi/i);
+});
+
+test("đơn đã thu đủ thì không bị nhắc", async () => {
+  const period = new Date().toISOString().slice(0, 7);
+  const { invoices } = await (await authed(`/api/invoices?period=${period}`)).json();
+  const paid = invoices.find((row) => row.status === "paid");
+  assert.ok(paid, "dữ liệu mẫu phải có đơn đã thu đủ");
+
+  await runReminders(paid.dueDate);
+  const list = await pendingReminders();
+  assert.ok(
+    !list.some((item) => item.invoiceCode === paid.code),
+    "nhắc nợ cả đơn đã thu đủ",
+  );
+});
+
+test("đánh dấu đã nhắc thì rời khỏi danh sách chờ", async () => {
+  const list = await pendingReminders();
+  const target = list[0];
+  assert.ok(target, "cần ít nhất một lời nhắc để thử");
+
+  const marked = await json("/api/reminders", { id: target.id, channel: "zalo" }, "PATCH");
+  assert.equal(marked.status, 200);
+
+  const after = await pendingReminders();
+  assert.ok(!after.some((item) => item.id === target.id), "vẫn còn trong danh sách chờ");
+
+  // Nhưng phải lưu lại để sau còn đối chiếu.
+  const { reminders: all } = await (await authed("/api/reminders?includeSent=true")).json();
+  const stored = all.find((item) => item.id === target.id);
+  assert.ok(stored, "lời nhắc bị xóa thay vì lưu lại");
+  assert.equal(stored.channel, "zalo");
+  assert.ok(stored.sentAt);
+});
+
+test("không đánh dấu hai lần cùng một lời nhắc", async () => {
+  const { reminders: all } = await (await authed("/api/reminders?includeSent=true")).json();
+  const sent = all.find((item) => item.sentAt);
+
+  const again = await json("/api/reminders", { id: sent.id, channel: "sms" }, "PATCH");
+  assert.equal(again.status, 400);
+  assert.match((await again.json()).error, /đã đánh dấu rồi/);
+});
+
+test("từ chối kênh nhắc lạ", async () => {
+  const list = await pendingReminders();
+  const target = list[0];
+  assert.ok(target);
+
+  const response = await json("/api/reminders", { id: target.id, channel: "bo-cau" }, "PATCH");
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /Kênh nhắc không hợp lệ/);
+});
+
+test("trang Nhắc nợ kết xuất được và số liệu vào Tổng quan", async () => {
+  const page = await authed("/nhac-no");
+  assert.equal(page.status, 200);
+  assert.match(await page.text(), /Nhắc nợ/);
+
+  const pending = await pendingReminders();
+  const dashboard = await (await authed("/")).text();
+  if (pending.length > 0) {
+    // React chèn `<!-- -->` giữa biểu thức và chữ liền kề khi kết xuất.
+    assert.match(dashboard, new RegExp(`${pending.length}<!-- --> lời nhắc nợ chờ gửi`));
+  }
+});
+
+test("nhắc nợ yêu cầu đăng nhập", async () => {
+  assert.equal((await anonymous("/api/reminders")).status, 401);
+  assert.equal(
+    (await anonymous("/api/reminders", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: "{}",
+    })).status,
+    401,
+  );
+});
+
+/* ------------------------------------------------------------------ */
 /* Kết xuất trang                                                     */
 /* ------------------------------------------------------------------ */
 

@@ -1,6 +1,7 @@
 /** Runtime entry point for RoomManager. */
 import { handleImageOptimization, DEFAULT_DEVICE_SIZES, DEFAULT_IMAGE_SIZES } from "vinext/server/image-optimization";
 import handler from "vinext/server/app-router-entry";
+import { generateReminders } from "../db/reminders";
 
 interface Env {
   ASSETS: Fetcher;
@@ -17,6 +18,11 @@ interface Env {
 interface ExecutionContext {
   waitUntil(promise: Promise<unknown>): void;
   passThroughOnException(): void;
+}
+
+interface ScheduledEvent {
+  scheduledTime: number;
+  cron: string;
 }
 
 // Image security config. SVG sources with .svg extension auto-skip the
@@ -41,6 +47,30 @@ const worker = {
     }
 
     return handler.fetch(request, env, ctx);
+  },
+
+  /**
+   * Chạy theo lịch cron khai báo trong vite.config.ts.
+   *
+   * Chỉ rà và soạn lời nhắc, không tự gửi tin cho khách: gửi cần dịch vụ bên
+   * ngoài chưa có. Chủ nhà mở trang Nhắc nợ là thấy danh sách đã soạn sẵn.
+   */
+  async scheduled(event: ScheduledEvent, _env: Env, ctx: ExecutionContext): Promise<void> {
+    // Lấy ngày theo giờ Việt Nam, không theo UTC: cron chạy 01:00 UTC nghĩa là
+    // 08:00 cùng ngày ở Việt Nam, nhưng UTC vẫn còn ở ngày đó nên trùng nhau.
+    // Vẫn cộng bù múi giờ cho chắc, phòng khi đổi giờ chạy.
+    const vietnamNow = new Date(event.scheduledTime + 7 * 60 * 60 * 1000);
+    const today = vietnamNow.toISOString().slice(0, 10);
+
+    ctx.waitUntil(
+      generateReminders(today).then(
+        (result) =>
+          console.log(
+            `[nhac-no] ${result.today}: tạo ${result.created}, bỏ qua ${result.skipped}`,
+          ),
+        (error) => console.error("[nhac-no] lỗi:", error),
+      ),
+    );
   },
 };
 
