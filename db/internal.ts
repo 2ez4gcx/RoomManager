@@ -49,6 +49,11 @@ export function formatCode(prefix: string, lastCode: string | undefined, width =
 /**
  * Mã kế tiếp của một bảng, dựa trên mã lớn nhất đang có.
  *
+ * Sắp xếp theo chuỗi, nên MỌI mã trong cùng một bảng phải có cùng tiền tố và
+ * phần số cùng độ dài — chỉ khi đó thứ tự chuỗi mới trùng thứ tự số. Chen một
+ * mã dạng khác vào (ví dụ `GD-D001`) sẽ làm hàm này đọc ra số không hợp lệ và
+ * trả về mã đã tồn tại.
+ *
  * Chưa chống được hai yêu cầu tạo cùng lúc; các cột mã đều có ràng buộc UNIQUE
  * nên trường hợp đó báo lỗi thay vì tạo trùng.
  */

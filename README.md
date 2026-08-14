@@ -8,7 +8,7 @@ Toàn bộ giao diện đã chạy trên dữ liệu thật, có đăng nhập.
 
 - **Đăng nhập** bằng email hoặc tên đăng nhập + mật khẩu (PBKDF2, phiên lưu cookie `HttpOnly`), có giới hạn số lần nhập sai và xác thực hai bước TOTP tùy chọn. Mọi trang và API quản trị đều bị khóa; chỉ `/booking` và `/login` là công khai.
 - **Nhà & phòng** — thêm nhà mới, thêm loại phòng, thêm phòng. Trạng thái phòng được **suy ra** từ hợp đồng, giữ chỗ và bảo trì, không lưu cờ riêng.
-- **Khách thuê** — tạo hồ sơ và hợp đồng cùng lúc, theo dõi công nợ và hạn hợp đồng.
+- **Khách thuê** — tạo hồ sơ và hợp đồng cùng lúc, theo dõi công nợ và hạn hợp đồng, **trả phòng** với tất toán tiền cọc.
 - **Đặt phòng** — bảng kanban 4 trạng thái, xác nhận là giữ chỗ có hạn.
 - **Lập đơn thu** — chốt sổ cuối kỳ: nhập chỉ số điện từng phòng, xem tiền tính lại ngay, rồi phát hành đơn cho tất cả phòng đang thuê trong một lượt.
 - **Đơn thu** — xem chi tiết từng dòng (tiền phòng, điện, nước, dịch vụ), ghi nhận thanh toán một phần hoặc toàn phần, lọc theo kỳ.
@@ -24,6 +24,7 @@ Các ràng buộc nghiệp vụ đang được kiểm thử tự động: không
 **Chưa làm:**
 
 - Nút "Xuất Excel", "Xuất báo cáo", "Gửi nhắc" mới là giao diện, chưa hoạt động.
+- Chưa nhắc nợ tự động; cần dịch vụ gửi tin (Zalo OA hoặc email), hiện chưa cấu hình.
 - Chưa chốt nền tảng lâu dài: đang chạy Cloudflare D1, phương án VPS/PostgreSQL vẫn để ngỏ.
 - Chưa cấu hình tên miền hay môi trường chạy thật; mới chạy ở máy local.
 
@@ -73,7 +74,7 @@ Route `/api/dev/setup` mặc định bị khóa ngoài môi trường dev; bản
 npm test
 ```
 
-Chạy typecheck, build, rồi kiểm thử bản build trong Miniflare (workerd thật kèm D1 thật): 91 bài, gồm xác thực, quyền truy cập, ràng buộc nghiệp vụ và kiểm tra trang công khai không lộ dữ liệu khách thuê.
+Chạy typecheck, build, rồi kiểm thử bản build trong Miniflare (workerd thật kèm D1 thật): 102 bài, gồm xác thực, quyền truy cập, ràng buộc nghiệp vụ và kiểm tra trang công khai không lộ dữ liệu khách thuê.
 
 ```bash
 npm run lint
@@ -120,6 +121,7 @@ Sinh migration mới vào `drizzle/`. Khi deploy, control plane tự áp SQL nà
 | `db/users.ts` | Quản lý tài khoản và phân quyền |
 | `db/totp.ts`, `db/two-factor.ts`, `db/qr.ts` | Xác thực hai bước, mã khôi phục và mã QR |
 | `db/billing.ts` | Lập đơn thu theo kỳ, chia tiền theo ngày |
+| `db/move-out.ts` | Trả phòng và tất toán tiền cọc |
 | `db/password-reset.ts` | Link đặt lại mật khẩu dùng một lần |
 | `db/password-hash.ts` | Băm mật khẩu, dùng chung với script cứu hộ |
 | `proxy.ts` | Chặn điều hướng; xác thực thật nằm ở `requireUser()` và `requireApiUser()` |

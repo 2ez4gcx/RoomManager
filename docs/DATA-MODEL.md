@@ -43,6 +43,25 @@ tờ nên chưa cần object storage.
 - `memberships` chưa cần: vai trò nằm thẳng ở `users.role` vì hệ thống chỉ phục
   vụ một chủ sở hữu. Thay vào đó có `sessions` cho đăng nhập.
 
+## Trả phòng và tiền cọc
+
+Dòng tiền của cọc được ghi ở **hai đầu**:
+
+- Ký hợp đồng: cọc vào `ledger_entries` là khoản thu, ghi đúng ngày bắt đầu.
+- Trả phòng: phần hoàn lại ra `ledger_entries` là khoản chi.
+
+Phần cọc dùng để cấn nợ hoặc bị khấu trừ thì **không** ghi sổ lần nữa — tiền
+mặt đó đã vào từ lúc thu cọc, ghi thêm là đếm hai lần. `recordPayment` có tham
+số `skipLedger` cho đúng trường hợp này. Nhờ vậy số dư sổ quỹ khớp tiền thật
+trong két.
+
+Thứ tự tất toán: cấn nợ đơn thu trước (cũ trước mới sau), rồi tới khấu trừ hư
+hỏng, còn lại bao nhiêu thì hoàn. Cọc không đủ thì phần thiếu **vẫn nằm nguyên
+ở các đơn chưa thu** — đó là tiền chủ nhà còn quyền đòi, không tự xóa.
+
+Hợp đồng chuyển sang `status = 'ended'`, và vì trạng thái phòng được suy ra từ
+hợp đồng nên phòng thành trống ngay, cho thuê lại được luôn.
+
 ## Lập đơn thu theo kỳ
 
 Một kỳ là một tháng dương lịch (`YYYY-MM`). Ràng buộc UNIQUE trên

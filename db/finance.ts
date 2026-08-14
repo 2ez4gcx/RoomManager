@@ -25,6 +25,15 @@ export async function recordPayment(input: {
   paidAt?: string;
   note?: string;
   actorId: string;
+  /** Nhóm hiện trong sổ thu chi. Mặc định là tiền phòng. */
+  category?: string;
+  /**
+   * Bỏ qua bước ghi sổ quỹ.
+   *
+   * Dùng khi cấn trừ từ tiền cọc: tiền mặt đã vào sổ ngay lúc thu cọc, ghi
+   * thêm lần nữa ở đây là đếm hai lần.
+   */
+  skipLedger?: boolean;
 }) {
   const db = getDb();
 
@@ -103,18 +112,20 @@ export async function recordPayment(input: {
     })
     .where(eq(invoices.id, invoice.id));
 
-  await db.insert(ledgerEntries).values({
-    id: newId("led"),
-    code: await nextCode(db, ledgerEntries, ledgerEntries.code, "GD", 4),
-    propertyId: roomRow?.propertyId ?? null,
-    direction: "in",
-    category: "Tiền phòng",
-    description: `Thu đơn ${invoice.code}`,
-    amount: input.amount,
-    occurredAt: paidAt,
-    paymentId,
-    recordedBy: input.actorId,
-  });
+  if (!input.skipLedger) {
+    await db.insert(ledgerEntries).values({
+      id: newId("led"),
+      code: await nextCode(db, ledgerEntries, ledgerEntries.code, "GD", 4),
+      propertyId: roomRow?.propertyId ?? null,
+      direction: "in",
+      category: input.category ?? "Tiền phòng",
+      description: `Thu đơn ${invoice.code}`,
+      amount: input.amount,
+      occurredAt: paidAt,
+      paymentId,
+      recordedBy: input.actorId,
+    });
+  }
 
   await writeAudit(db, {
     actorId: input.actorId,

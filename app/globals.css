@@ -339,3 +339,14 @@ input:disabled, select:disabled { background: #f4f2ec; color: #8b938f; cursor: n
 .billing-actions .modal-hint { margin: 0; flex: 1; min-width: 260px; }
 .billing-actions .primary-button[disabled] { opacity: .5; cursor: not-allowed; }
 .security-callout.callout-ok a { margin-left: auto; color: var(--forest); font-weight: 700; font-size: 11px; text-decoration: underline; white-space: nowrap; }
+
+/* Trả phòng và tất toán cọc */
+.settle-summary { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 13px; }
+.settle-summary div { padding: 12px; background: #f4f2ec; border-radius: 9px; display: flex; flex-direction: column; gap: 4px; }
+.settle-summary span { color: #8c9490; font-size: 9px; }
+.settle-summary strong { font-size: 14px; }
+.settle-result { margin: 14px 0; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.settle-result div { display: flex; justify-content: space-between; align-items: center; padding: 10px 13px; font-size: 11px; border-bottom: 1px solid var(--line); }
+.settle-result div:last-child { border-bottom: 0; }
+.settle-result .settle-total { background: #eaf5ef; font-weight: 700; font-size: 13px; }
+.settle-list { margin: 13px 0 !important; }

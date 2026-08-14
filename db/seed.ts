@@ -434,15 +434,25 @@ export async function seed(db: Db) {
 
   /* --- Sổ thu chi --------------------------------------------------- */
   const incomeEntries = paymentRows.map((payment, order) => ({
-    id: newId("led"),
-    code: `GD-${String(order + 1).padStart(4, "0")}`,
     propertyId: propertyRows[order % 2].id,
     direction: "in" as const,
     category: "Tiền phòng",
     description: payment.note,
     amount: payment.amount,
     occurredAt: payment.paidAt,
-    paymentId: payment.id,
+    paymentId: payment.id as string | null,
+    recordedBy: ownerId,
+  }));
+
+  // Cọc vào sổ quỹ đúng ngày ký hợp đồng, không dồn vào tháng hiện tại.
+  const depositEntries = contractRows.map((contract, order) => ({
+    propertyId: roomRows[occupiedIndexes[order]].propertyId,
+    direction: "in" as const,
+    category: "Tiền cọc",
+    description: `Cọc phòng ${roomRows[occupiedIndexes[order]].code} · ${guestRows[order].fullName}`,
+    amount: contract.deposit,
+    occurredAt: contract.startDate,
+    paymentId: null as string | null,
     recordedBy: ownerId,
   }));
 
@@ -455,18 +465,25 @@ export async function seed(db: Db) {
     { category: "Vệ sinh", description: "Thu gom rác và vệ sinh chung", amount: 900_000, dayOffset: 11 },
   ];
   const expenseEntries = expenseTemplates.map((template, order) => ({
-    id: newId("led"),
-    code: `GD-${String(incomeEntries.length + order + 1).padStart(4, "0")}`,
     propertyId: propertyRows[order % 2].id,
     direction: "out" as const,
     category: template.category,
     description: template.description,
     amount: template.amount,
     occurredAt: isoDate(addDays(monthStart, template.dayOffset)),
-    paymentId: null,
+    paymentId: null as string | null,
     recordedBy: ownerId,
   }));
-  await insertChunked(ledgerEntries, [...incomeEntries, ...expenseEntries], (chunk) =>
+  // Một dãy mã liên tục cho cả sổ: hàm sinh mã kế tiếp đọc số ở cuối mã lớn
+  // nhất, nên chen mã dạng khác vào giữa sẽ làm nó trả về mã đã tồn tại.
+  const ledgerRows = [...incomeEntries, ...depositEntries, ...expenseEntries].map(
+    (entry, order) => ({
+      ...entry,
+      id: newId("led"),
+      code: `GD-${String(order + 1).padStart(4, "0")}`,
+    }),
+  );
+  await insertChunked(ledgerEntries, ledgerRows, (chunk) =>
     db.insert(ledgerEntries).values(chunk),
   );
 

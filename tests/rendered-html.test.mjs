@@ -1287,6 +1287,279 @@ test("trang lập đơn thu kết xuất được", async () => {
 });
 
 /* ------------------------------------------------------------------ */
+/* Trả phòng                                                          */
+/* ------------------------------------------------------------------ */
+
+/** Tổng thu và tổng chi của toàn bộ sổ quỹ, dùng để đối chiếu dòng tiền. */
+async function ledgerTotals() {
+  const { entries } = await (await authed("/api/ledger?limit=1000")).json();
+  return {
+    inCount: entries.filter((entry) => entry.direction === "in").length,
+    deposits: entries
+      .filter((entry) => entry.category === "Tiền cọc")
+      .reduce((sum, entry) => sum + entry.amount, 0),
+    refunds: entries
+      .filter((entry) => entry.category === "Hoàn cọc")
+      .reduce((sum, entry) => sum + entry.amount, 0),
+  };
+}
+
+/** Thuê một phòng trống rồi trả về hợp đồng vừa ký. */
+async function rentARoom(name, phone, deposit) {
+  const { rooms } = await (await authed("/api/rooms")).json();
+  const vacant = rooms.find((room) => room.status === "Trống");
+  assert.ok(vacant, "cần một phòng trống");
+
+  const created = await json("/api/tenants", {
+    fullName: name,
+    phone,
+    roomId: vacant.id,
+    startDate: new Date().toISOString().slice(0, 10),
+    deposit,
+  });
+  assert.equal(created.status, 201);
+
+  const { tenants } = await (await authed("/api/tenants")).json();
+  const tenant = tenants.find((row) => row.fullName === name);
+  return { tenant, room: vacant };
+}
+
+test("tiền cọc được ghi vào sổ quỹ ngay khi ký hợp đồng", async () => {
+  const before = await ledgerTotals();
+  const { room } = await rentARoom("Khách Có Cọc", "0905550001", 5000000);
+  const after = await ledgerTotals();
+
+  // Không ghi cọc lúc thu thì lúc hoàn cọc sổ sẽ hiện thành lỗ.
+  assert.equal(after.deposits - before.deposits, 5000000, `cọc phòng ${room.code} không vào sổ`);
+});
+
+test("xem trước trả phòng cho biết cọc và tiền còn nợ", async () => {
+  const { tenants } = await (await authed("/api/tenants")).json();
+  const tenant = tenants.find((row) => row.fullName === "Khách Có Cọc");
+
+  const response = await authed(
+    `/api/move-out?contractId=${encodeURIComponent(tenant.contractId)}`,
+  );
+  assert.equal(response.status, 200);
+
+  const preview = await response.json();
+  assert.equal(preview.deposit, 5000000);
+  assert.equal(preview.outstanding, 0, "hợp đồng mới chưa có đơn nào");
+  assert.deepEqual(preview.unpaidInvoices, []);
+});
+
+test("trả phòng khi không nợ thì hoàn đủ cọc và phòng thành trống", async () => {
+  const { tenants } = await (await authed("/api/tenants")).json();
+  const tenant = tenants.find((row) => row.fullName === "Khách Có Cọc");
+  const roomCode = tenant.roomCode;
+  const before = await ledgerTotals();
+
+  const response = await json("/api/move-out", {
+    contractId: tenant.contractId,
+    endDate: new Date().toISOString().slice(0, 10),
+    reason: "Chuyển chỗ ở",
+  });
+  assert.equal(response.status, 200);
+
+  assert.deepEqual(await response.json(), {
+    settledFromDeposit: 0,
+    deductionKept: 0,
+    refund: 5000000,
+    stillOwed: 0,
+  });
+
+  // Khoản hoàn phải ra sổ quỹ, vì tiền mặt thật sự rời két.
+  const after = await ledgerTotals();
+  assert.equal(after.refunds - before.refunds, 5000000);
+
+  // Trạng thái phòng suy từ hợp đồng, nên hết hợp đồng là phòng trống ngay.
+  const { rooms } = await (await authed("/api/rooms")).json();
+  assert.equal(rooms.find((room) => room.code === roomCode).status, "Trống");
+
+  const { tenants: after2 } = await (await authed("/api/tenants")).json();
+  assert.equal(after2.find((row) => row.fullName === "Khách Có Cọc").status, "Đã trả phòng");
+});
+
+test("không trả phòng hai lần cho cùng một hợp đồng", async () => {
+  const { tenant } = await rentARoom("Khách Trả Hai Lần", "0905550009", 1000000);
+  // Giữ lại id: sau khi trả phòng, danh sách khách thuê chỉ nối hợp đồng còn
+  // hiệu lực nên không trả về contractId nữa.
+  const contractId = tenant.contractId;
+  const endDate = new Date().toISOString().slice(0, 10);
+
+  assert.equal((await json("/api/move-out", { contractId, endDate })).status, 200);
+
+  const again = await json("/api/move-out", { contractId, endDate });
+  assert.equal(again.status, 400);
+  assert.match((await again.json()).error, /đã kết thúc rồi/);
+});
+
+test("cọc được cấn vào đơn còn nợ, phần dư mới hoàn lại", async () => {
+  const { tenant, room } = await rentARoom("Khách Còn Nợ", "0905550002", 6000000);
+
+  // Lập một đơn cho phòng này để tạo khoản nợ.
+  const period = nextPeriod(8);
+  const data = await preview(period);
+  const target = data.rows.find((row) => row.roomCode === room.code);
+  assert.ok(target, "hợp đồng mới phải nằm trong kỳ");
+
+  assert.equal(
+    (await json("/api/billing", {
+      period,
+      entries: [{ contractId: target.contractId, currentReading: target.previousReading }],
+    })).status,
+    201,
+  );
+
+  const before = await ledgerTotals();
+  const settle = await (
+    await authed(`/api/move-out?contractId=${encodeURIComponent(tenant.contractId)}`)
+  ).json();
+  assert.ok(settle.outstanding > 0, "phải có nợ để kiểm tra cấn trừ");
+
+  const response = await json("/api/move-out", {
+    contractId: tenant.contractId,
+    endDate: new Date().toISOString().slice(0, 10),
+  });
+  assert.equal(response.status, 200);
+
+  const result = await response.json();
+  assert.equal(result.settledFromDeposit, settle.outstanding);
+  assert.equal(result.refund, 6000000 - settle.outstanding);
+  assert.equal(result.stillOwed, 0);
+
+  // Phần cấn trừ KHÔNG được ghi sổ lần nữa: tiền đã vào từ lúc thu cọc.
+  const after = await ledgerTotals();
+  assert.equal(
+    after.refunds - before.refunds,
+    result.refund,
+    "chỉ phần hoàn lại mới ra sổ quỹ",
+  );
+
+  // Đơn phải được đánh dấu đã thu đủ.
+  const { invoices } = await (await authed(`/api/invoices?period=${period}`)).json();
+  const invoice = invoices.find((row) => row.roomCode === room.code);
+  assert.equal(invoice.outstanding, 0);
+  assert.equal(invoice.status, "paid");
+});
+
+test("cọc không đủ thì phần thiếu vẫn còn nợ, không tự xóa", async () => {
+  const { tenant, room } = await rentARoom("Khách Cọc Ít", "0905550003", 100000);
+
+  const period = nextPeriod(9);
+  const data = await preview(period);
+  const target = data.rows.find((row) => row.roomCode === room.code);
+  assert.equal(
+    (await json("/api/billing", {
+      period,
+      entries: [{ contractId: target.contractId, currentReading: target.previousReading }],
+    })).status,
+    201,
+  );
+
+  const settle = await (
+    await authed(`/api/move-out?contractId=${encodeURIComponent(tenant.contractId)}`)
+  ).json();
+
+  const result = await (
+    await json("/api/move-out", {
+      contractId: tenant.contractId,
+      endDate: new Date().toISOString().slice(0, 10),
+    })
+  ).json();
+
+  assert.equal(result.settledFromDeposit, 100000);
+  assert.equal(result.refund, 0);
+  assert.equal(result.stillOwed, settle.outstanding - 100000);
+
+  // Nợ còn lại vẫn là tiền chủ nhà có quyền đòi, không được tự xóa.
+  const { invoices } = await (await authed(`/api/invoices?period=${period}`)).json();
+  const invoice = invoices.find((row) => row.roomCode === room.code);
+  assert.equal(invoice.outstanding, result.stillOwed);
+  assert.equal(invoice.status, "partial");
+});
+
+test("khấu trừ hư hỏng lấy từ phần cọc còn lại", async () => {
+  const { tenant } = await rentARoom("Khách Bị Trừ", "0905550004", 4000000);
+
+  const result = await (
+    await json("/api/move-out", {
+      contractId: tenant.contractId,
+      endDate: new Date().toISOString().slice(0, 10),
+      deductions: 700000,
+      deductionNote: "Vỡ kính cửa sổ",
+    })
+  ).json();
+
+  assert.equal(result.deductionKept, 700000);
+  assert.equal(result.refund, 3300000);
+});
+
+test("khấu trừ không vượt quá phần cọc còn lại", async () => {
+  const { tenant } = await rentARoom("Khách Trừ Quá", "0905550005", 500000);
+
+  const result = await (
+    await json("/api/move-out", {
+      contractId: tenant.contractId,
+      endDate: new Date().toISOString().slice(0, 10),
+      deductions: 9000000,
+    })
+  ).json();
+
+  // Giữ nhiều hơn số cọc đang cầm là không có cơ sở.
+  assert.equal(result.deductionKept, 500000);
+  assert.equal(result.refund, 0);
+});
+
+test("từ chối ngày trả phòng trước ngày bắt đầu hợp đồng", async () => {
+  const { tenant } = await rentARoom("Khách Ngày Sai", "0905550006", 1000000);
+
+  const response = await json("/api/move-out", {
+    contractId: tenant.contractId,
+    endDate: "2000-01-01",
+  });
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /không được trước ngày bắt đầu/);
+});
+
+test("phòng vừa trả cho thuê lại được ngay", async () => {
+  const { tenant, room } = await rentARoom("Khách Ở Ngắn", "0905550007", 1000000);
+
+  assert.equal(
+    (await json("/api/move-out", {
+      contractId: tenant.contractId,
+      endDate: new Date().toISOString().slice(0, 10),
+    })).status,
+    200,
+  );
+
+  const relet = await json("/api/tenants", {
+    fullName: "Khách Kế Tiếp",
+    phone: "0905550008",
+    roomId: room.id,
+    startDate: new Date().toISOString().slice(0, 10),
+  });
+  assert.equal(relet.status, 201, "phòng đã trả mà vẫn không cho thuê lại được");
+
+  const { rooms } = await (await authed("/api/rooms")).json();
+  const updated = rooms.find((item) => item.id === room.id);
+  assert.equal(updated.status, "Đang thuê");
+  assert.equal(updated.tenantName, "Khách Kế Tiếp");
+});
+
+test("trả phòng yêu cầu đăng nhập", async () => {
+  assert.equal((await anonymous("/api/move-out?contractId=abc")).status, 401);
+  assert.equal(
+    (await anonymous("/api/move-out", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ contractId: "abc", endDate: "2026-01-01" }),
+    })).status,
+    401,
+  );
+});
+
+/* ------------------------------------------------------------------ */
 /* Kết xuất trang                                                     */
 /* ------------------------------------------------------------------ */
 
@@ -1700,7 +1973,8 @@ test("từ chối thanh toán vào đơn thu không tồn tại", async () => {
 });
 
 test("thêm khoản chi vào sổ và tổng chi tăng đúng", async () => {
-  const before = await (await authed("/api/ledger")).json();
+  // Lấy cả sổ chứ không phải 30 dòng mặc định, nếu không phép cộng bị cắt cụt.
+  const before = await (await authed("/api/ledger?limit=1000")).json();
   const beforeExpense = before.entries
     .filter((entry) => entry.direction === "out")
     .reduce((sum, entry) => sum + entry.amount, 0);
@@ -1713,7 +1987,7 @@ test("thêm khoản chi vào sổ và tổng chi tăng đúng", async () => {
   });
   assert.equal(created.status, 201);
 
-  const after = await (await authed("/api/ledger")).json();
+  const after = await (await authed("/api/ledger?limit=1000")).json();
   const afterExpense = after.entries
     .filter((entry) => entry.direction === "out")
     .reduce((sum, entry) => sum + entry.amount, 0);

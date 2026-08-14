@@ -15,6 +15,7 @@ import {
   contractGuests,
   contracts,
   guests,
+  ledgerEntries,
   properties,
   roomTypes,
   rooms,
@@ -137,7 +138,14 @@ export async function createTenant(input: CreateTenantInput) {
   }
 
   const [room] = await db
-    .select({ id: rooms.id, code: rooms.code, price: rooms.price, condition: rooms.condition, basePrice: roomTypes.basePrice })
+    .select({
+      id: rooms.id,
+      code: rooms.code,
+      propertyId: rooms.propertyId,
+      price: rooms.price,
+      condition: rooms.condition,
+      basePrice: roomTypes.basePrice,
+    })
     .from(rooms)
     .innerJoin(roomTypes, eq(roomTypes.id, rooms.roomTypeId))
     .where(eq(rooms.id, input.roomId))
@@ -159,6 +167,11 @@ export async function createTenant(input: CreateTenantInput) {
   const rent = input.rent ?? room.price ?? room.basePrice;
   if (!Number.isInteger(rent) || rent <= 0) {
     throw new ValidationError("Giá thuê phải là số nguyên VNĐ lớn hơn 0.", "rent");
+  }
+
+  const deposit = input.deposit ?? rent;
+  if (!Number.isInteger(deposit) || deposit < 0) {
+    throw new ValidationError("Tiền cọc phải là số nguyên VNĐ.", "deposit");
   }
 
   const billingDay = input.billingDay ?? 5;
@@ -190,7 +203,7 @@ export async function createTenant(input: CreateTenantInput) {
     startDate: input.startDate,
     endDate: end.toISOString().slice(0, 10),
     rent,
-    deposit: input.deposit ?? rent,
+    deposit,
     billingDay,
     status: "active",
   });
@@ -213,6 +226,22 @@ export async function createTenant(input: CreateTenantInput) {
         eq(bookingRequests.status, "confirmed"),
       ),
     );
+
+  // Ghi cọc vào sổ quỹ ngay khi thu. Không ghi thì lúc trả phòng khoản hoàn
+  // cọc sẽ hiện thành lỗ, vì tiền vào chưa bao giờ được ghi nhận.
+  if (deposit > 0) {
+    await db.insert(ledgerEntries).values({
+      id: newId("led"),
+      code: await nextCode(db, ledgerEntries, ledgerEntries.code, "GD", 4),
+      propertyId: room.propertyId,
+      direction: "in",
+      category: "Tiền cọc",
+      description: `Cọc phòng ${room.code} · ${fullName}`,
+      amount: deposit,
+      occurredAt: input.startDate,
+      recordedBy: null,
+    });
+  }
 
   await writeAudit(db, {
     action: "contract.create",

@@ -1,12 +1,15 @@
 "use client";
 
-import { ChevronDown, Download, FileText, MoreHorizontal, Phone, Plus, UserPlus, Users, X } from "lucide-react";
+import {
+  Check, ChevronDown, Download, FileText, LogOut, Phone, Plus, UserPlus, Users, X,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { AppShell, Modal, PageHeader, StatusBadge } from "../components/AppShell";
 import { formatDate, initials, money } from "../lib/format";
 import type { SessionUser } from "../../db/auth";
 import type { RoomView, TenantView } from "../../db/queries";
+import type { MoveOutPreview, MoveOutResult } from "../../db/move-out";
 
 const ALL_STATUSES = "Tất cả trạng thái";
 
@@ -30,6 +33,7 @@ export function TenantsClient({
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState(ALL_STATUSES);
   const [adding, setAdding] = useState(false);
+  const [movingOut, setMovingOut] = useState<TenantView | null>(null);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -131,7 +135,17 @@ export function TenantsClient({
                     {tenant.debt ? `${money.format(tenant.debt)}đ` : "Không nợ"}
                   </td>
                   <td><StatusBadge tone={tones[tenant.status]}>{tenant.status}</StatusBadge></td>
-                  <td><button className="icon-button" aria-label="Thao tác khác"><MoreHorizontal size={17} /></button></td>
+                  <td>
+                    {tenant.contractId && (
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        onClick={() => setMovingOut(tenant)}
+                      >
+                        <LogOut size={14} /> Trả phòng
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -140,6 +154,11 @@ export function TenantsClient({
         </section>
       </div>
 
+      <MoveOutModal
+        tenant={movingOut}
+        onClose={() => setMovingOut(null)}
+        onDone={() => router.refresh()}
+      />
       <AddTenantModal
         open={adding}
         vacantRooms={vacantRooms}
@@ -259,6 +278,205 @@ function AddTenantModal({
           {error && <p className="form-error" role="alert">{error}</p>}
           <button className="submit-button" type="submit" disabled={saving}>
             <Plus size={16} /> {saving ? "Đang lưu..." : "Tạo hồ sơ khách thuê"}
+          </button>
+        </form>
+      )}
+    </Modal>
+  );
+}
+
+/**
+ * Hộp thoại trả phòng.
+ *
+ * Tải trước tình trạng nợ và tiền cọc rồi tính sẵn phần hoàn lại, để người
+ * thao tác thấy con số trước khi chốt — kết thúc hợp đồng là việc không hoàn tác được.
+ */
+function MoveOutModal({
+  tenant, onClose, onDone,
+}: {
+  tenant: TenantView | null;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const [preview, setPreview] = useState<MoveOutPreview | null>(null);
+  const [deductions, setDeductions] = useState("");
+  const [endDate, setEndDate] = useState(new Date().toISOString().slice(0, 10));
+  const [result, setResult] = useState<MoveOutResult | null>(null);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
+
+  // Nạp khi mở hộp thoại cho một hợp đồng khác.
+  if (tenant?.contractId && loadedFor !== tenant.contractId) {
+    setLoadedFor(tenant.contractId);
+    setPreview(null);
+    setResult(null);
+    setError("");
+    setDeductions("");
+    fetch(`/api/move-out?contractId=${encodeURIComponent(tenant.contractId)}`)
+      .then(async (response) => {
+        const payload = (await response.json()) as MoveOutPreview & { error?: string };
+        if (!response.ok) {
+          setError(payload.error ?? "Không tải được thông tin hợp đồng.");
+          return;
+        }
+        setPreview(payload);
+      })
+      .catch(() => setError("Không kết nối được máy chủ."));
+  }
+
+  const deduction = deductions === "" ? 0 : Number(deductions);
+  const settled = preview ? Math.min(preview.deposit, preview.outstanding) : 0;
+  const afterDebt = preview ? preview.deposit - settled : 0;
+  const kept = Math.min(Number.isFinite(deduction) ? deduction : 0, afterDebt);
+  const refund = afterDebt - kept;
+  const stillOwed = preview ? Math.max(preview.outstanding - settled, 0) : 0;
+
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!tenant?.contractId) return;
+
+    setError("");
+    setBusy(true);
+    const form = new FormData(event.currentTarget);
+    try {
+      const response = await fetch("/api/move-out", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          contractId: tenant.contractId,
+          endDate: form.get("endDate"),
+          reason: form.get("reason"),
+          deductions: deductions === "" ? 0 : deductions,
+          deductionNote: form.get("deductionNote"),
+        }),
+      });
+      const payload = (await response.json()) as MoveOutResult & { error?: string };
+      if (!response.ok) {
+        setError(payload.error ?? "Không trả phòng được.");
+        return;
+      }
+      setResult(payload);
+      onDone();
+    } catch {
+      setError("Không kết nối được máy chủ.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function close() {
+    setLoadedFor(null);
+    setPreview(null);
+    setResult(null);
+    setError("");
+    onClose();
+  }
+
+  return (
+    <Modal open={!!tenant} onClose={close} wide>
+      <div className="modal-heading">
+        <div>
+          <span className="modal-kicker">KẾT THÚC HỢP ĐỒNG</span>
+          <h2>Trả phòng {preview?.roomCode ?? tenant?.roomCode}</h2>
+          <p>{tenant?.fullName} · {preview?.propertyName ?? tenant?.propertyName}</p>
+        </div>
+        <button className="icon-button" onClick={close} aria-label="Đóng"><X size={20} /></button>
+      </div>
+
+      {result ? (
+        <div className="booking-success">
+          <span><Check size={28} /></span>
+          <h2>Đã trả phòng</h2>
+          <div className="detail-list settle-list">
+            <div><span>Cấn vào tiền còn nợ</span><strong>{money.format(result.settledFromDeposit)}đ</strong></div>
+            <div><span>Khấu trừ giữ lại</span><strong>{money.format(result.deductionKept)}đ</strong></div>
+            <div><span>Hoàn lại cho khách</span><strong className="paid">{money.format(result.refund)}đ</strong></div>
+            {result.stillOwed > 0 && (
+              <div><span>Khách còn nợ</span><strong className="debt">{money.format(result.stillOwed)}đ</strong></div>
+            )}
+          </div>
+          {result.stillOwed > 0 && (
+            <p className="modal-hint">
+              Tiền cọc không đủ bù. Các đơn còn nợ vẫn giữ nguyên để theo dõi, không tự xóa.
+            </p>
+          )}
+          <button className="primary-button" onClick={close}>Xong</button>
+        </div>
+      ) : !preview ? (
+        <div className="empty-state">
+          {error ? <span className="debt">{error}</span> : "Đang tải thông tin hợp đồng..."}
+        </div>
+      ) : (
+        <form onSubmit={submit}>
+          <div className="settle-summary">
+            <div><span>Tiền cọc đã thu</span><strong>{money.format(preview.deposit)}đ</strong></div>
+            <div>
+              <span>Đang còn nợ</span>
+              <strong className={preview.outstanding > 0 ? "debt" : "paid"}>
+                {money.format(preview.outstanding)}đ
+              </strong>
+            </div>
+          </div>
+
+          {preview.unpaidInvoices.length > 0 && (
+            <div className="note-box">
+              <strong>{preview.unpaidInvoices.length} đơn chưa thu đủ</strong>
+              {preview.unpaidInvoices.map((invoice) => (
+                <p key={invoice.id}>
+                  {invoice.code} · kỳ {invoice.period} · còn {money.format(invoice.remaining)}đ
+                </p>
+              ))}
+            </div>
+          )}
+
+          <div className="form-grid">
+            <label>
+              Ngày trả phòng
+              <input
+                name="endDate"
+                type="date"
+                required
+                value={endDate}
+                onChange={(event) => setEndDate(event.target.value)}
+              />
+            </label>
+            <label>
+              Khấu trừ hư hỏng, vệ sinh
+              <div className="money-input">
+                <input
+                  type="number"
+                  min={0}
+                  value={deductions}
+                  placeholder="0"
+                  onChange={(event) => setDeductions(event.target.value)}
+                />
+                <span>VNĐ</span>
+              </div>
+            </label>
+          </div>
+          <label>Lý do trả phòng<input name="reason" placeholder="Hết hạn hợp đồng, chuyển chỗ ở..." /></label>
+          <label>Ghi chú khấu trừ<input name="deductionNote" placeholder="Vỡ kính, sơn lại tường..." /></label>
+
+          <div className="settle-result">
+            <div><span>Cấn vào tiền còn nợ</span><b>− {money.format(settled)}đ</b></div>
+            <div><span>Khấu trừ giữ lại</span><b>− {money.format(kept)}đ</b></div>
+            <div className="settle-total">
+              <span>Hoàn lại cho khách</span>
+              <b>{money.format(refund)}đ</b>
+            </div>
+            {stillOwed > 0 && (
+              <div><span className="debt">Cọc không đủ, khách còn nợ</span><b className="debt">{money.format(stillOwed)}đ</b></div>
+            )}
+          </div>
+
+          <p className="modal-hint">
+            Kết thúc hợp đồng không hoàn tác được. Phòng {preview.roomCode} sẽ chuyển sang
+            trống và cho thuê lại được ngay.
+          </p>
+          {error && <p className="form-error" role="alert">{error}</p>}
+          <button className="submit-button danger" type="submit" disabled={busy}>
+            <LogOut size={16} /> {busy ? "Đang xử lý..." : "Xác nhận trả phòng"}
           </button>
         </form>
       )}
