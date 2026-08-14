@@ -107,7 +107,10 @@ export function LoginClient() {
         </form>
 
         <p className="login-note">
-          <ShieldCheck size={14} /> Khách thuê tìm phòng thì vào <a href="/booking">trang đặt phòng</a>.
+          <ShieldCheck size={14} /> Quên mật khẩu? Nhờ chủ nhà cấp link đặt lại.
+        </p>
+        <p className="login-note login-note-tight">
+          Khách thuê tìm phòng thì vào <a href="/booking">trang đặt phòng</a>.
         </p>
       </section>
     </main>

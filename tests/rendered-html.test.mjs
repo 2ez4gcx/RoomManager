@@ -12,6 +12,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Miniflare } from "miniflare";
 import jsQR from "jsqr";
+// Import thẳng module máy chủ dùng: kiểm chéo băm giữa Node và workerd.
+import { hashPassword } from "../db/password-hash.ts";
 
 const distServer = fileURLToPath(new URL("../dist/server", import.meta.url));
 
@@ -840,6 +842,200 @@ test("trang quản lý tài khoản kết xuất được cho chủ nhà", async
 
   const html = await response.text();
   assert.match(html, /nhanvien@hoangan.vn/);
+});
+
+/* ------------------------------------------------------------------ */
+/* Quên mật khẩu                                                      */
+/* ------------------------------------------------------------------ */
+
+/** Lấy phần token trong đường dẫn link đặt lại. */
+function tokenFromPath(path) {
+  return new URL(path, "http://localhost").searchParams.get("token");
+}
+
+test("chỉ chủ nhà cấp được link đặt lại", async () => {
+  const staff = await findUser("nhanvien@hoangan.vn");
+
+  assert.equal(
+    (await anonymous("/api/auth/reset-link", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ userId: staff.id }),
+    })).status,
+    401,
+  );
+
+  const asStaff = withCookie(
+    await loginCookie("nhanvien@hoangan.vn", "matkhaumoi456", "203.0.113.60"),
+  );
+  const staffTry = await asStaff("/api/auth/reset-link", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ userId: staff.id }),
+  });
+  assert.equal(staffTry.status, 403, "nhân viên không được tự cấp link");
+});
+
+test("đặt lại mật khẩu bằng link, xong thì mọi phiên bị hủy", async () => {
+  const staff = await findUser("nhanvien@hoangan.vn");
+
+  // Phiên đang mở của người dùng, để kiểm tra nó bị đẩy ra sau khi đổi.
+  const asStaff = withCookie(
+    await loginCookie("nhanvien@hoangan.vn", "matkhaumoi456", "203.0.113.61"),
+  );
+  assert.equal((await asStaff("/api/rooms")).status, 200);
+
+  const created = await json("/api/auth/reset-link", { userId: staff.id });
+  assert.equal(created.status, 201);
+
+  const { path, expiresAt } = await created.json();
+  const token = tokenFromPath(path);
+  assert.ok(token && token.length >= 40, "token phải đủ dài để không đoán được");
+  assert.ok(new Date(expiresAt).getTime() > Date.now(), "link phải còn hạn");
+
+  // Trang đặt lại tra được link trước khi người dùng gõ gì.
+  const info = await (await anonymous(`/api/auth/reset-password?token=${encodeURIComponent(token)}`)).json();
+  assert.equal(info.valid, true);
+  assert.equal(info.fullName, "Nhân Viên Một");
+
+  const done = await anonymous("/api/auth/reset-password", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      token,
+      newPassword: "matkhausau789",
+      confirmPassword: "matkhausau789",
+    }),
+  });
+  assert.equal(done.status, 200);
+
+  // Không cấp phiên: đặt lại xong vẫn phải tự đăng nhập, nhờ vậy tài khoản bật
+  // hai bước vẫn bị hỏi mã.
+  assert.equal(done.headers.get("set-cookie"), null);
+
+  assert.equal((await asStaff("/api/rooms")).status, 401, "phiên cũ phải bị hủy");
+  await loginCookie("nhanvien@hoangan.vn", "matkhausau789", "203.0.113.62");
+});
+
+test("link chỉ dùng được một lần", async () => {
+  const staff = await findUser("nhanvien@hoangan.vn");
+  const token = tokenFromPath((await (await json("/api/auth/reset-link", { userId: staff.id })).json()).path);
+
+  const body = (password) =>
+    JSON.stringify({ token, newPassword: password, confirmPassword: password });
+
+  assert.equal(
+    (await anonymous("/api/auth/reset-password", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: body("matkhaulan1x"),
+    })).status,
+    200,
+  );
+
+  const again = await anonymous("/api/auth/reset-password", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: body("matkhaulan2x"),
+  });
+  assert.equal(again.status, 400);
+  assert.match((await again.json()).error, /đã dùng rồi|hết hạn/);
+
+  // Mật khẩu vẫn là của lần đặt đầu tiên.
+  await loginCookie("nhanvien@hoangan.vn", "matkhaulan1x", "203.0.113.63");
+});
+
+test("cấp link mới thì link cũ hết hiệu lực", async () => {
+  const staff = await findUser("nhanvien@hoangan.vn");
+  const first = tokenFromPath((await (await json("/api/auth/reset-link", { userId: staff.id })).json()).path);
+  const second = tokenFromPath((await (await json("/api/auth/reset-link", { userId: staff.id })).json()).path);
+  assert.notEqual(first, second);
+
+  // Để nhiều link cùng sống nghĩa là mỗi lần bấm nhầm lại thêm một chìa khóa
+  // đang trôi nổi.
+  const oldOne = await (await anonymous(`/api/auth/reset-password?token=${encodeURIComponent(first)}`)).json();
+  assert.equal(oldOne.valid, false);
+
+  const newOne = await (await anonymous(`/api/auth/reset-password?token=${encodeURIComponent(second)}`)).json();
+  assert.equal(newOne.valid, true);
+});
+
+test("từ chối token bịa, mật khẩu quá ngắn và hai lần nhập lệch nhau", async () => {
+  const staff = await findUser("nhanvien@hoangan.vn");
+  const token = tokenFromPath((await (await json("/api/auth/reset-link", { userId: staff.id })).json()).path);
+
+  const fake = await anonymous("/api/auth/reset-password", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      token: "token-bia-ra",
+      newPassword: "matkhaudai12",
+      confirmPassword: "matkhaudai12",
+    }),
+  });
+  const short = await anonymous("/api/auth/reset-password", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ token, newPassword: "abc", confirmPassword: "abc" }),
+  });
+  const mismatch = await anonymous("/api/auth/reset-password", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ token, newPassword: "matkhaudai12", confirmPassword: "matkhaukhac9" }),
+  });
+
+  assert.equal(fake.status, 400);
+  assert.equal(short.status, 400);
+  assert.match((await short.json()).error, /ít nhất 8 ký tự/);
+  assert.equal(mismatch.status, 400);
+  assert.match((await mismatch.json()).error, /không khớp/);
+});
+
+test("không cấp link cho tài khoản đang bị khóa", async () => {
+  const staff = await findUser("nhanvien@hoangan.vn");
+  assert.equal((await json("/api/users", { id: staff.id, isActive: false }, "PATCH")).status, 200);
+
+  const blocked = await json("/api/auth/reset-link", { userId: staff.id });
+  assert.equal(blocked.status, 400);
+  assert.match((await blocked.json()).error, /đang bị khóa/);
+
+  assert.equal((await json("/api/users", { id: staff.id, isActive: true }, "PATCH")).status, 200);
+});
+
+test("trang đặt lại mật khẩu mở cho người chưa đăng nhập", async () => {
+  const staff = await findUser("nhanvien@hoangan.vn");
+  const token = tokenFromPath((await (await json("/api/auth/reset-link", { userId: staff.id })).json()).path);
+
+  const good = await anonymous(`/dat-lai-mat-khau?token=${encodeURIComponent(token)}`);
+  assert.equal(good.status, 200);
+  assert.match(await good.text(), /Đặt lại mật khẩu/);
+
+  // Link hỏng thì báo ngay, không bắt người dùng gõ xong mới biết.
+  const bad = await anonymous("/dat-lai-mat-khau?token=khong-dung");
+  assert.equal(bad.status, 200);
+  assert.match(await bad.text(), /Link không dùng được/);
+});
+
+test("chuỗi băm do script cứu hộ sinh ở Node được worker chấp nhận", async () => {
+  // Đường cứu hộ khi chủ nhà duy nhất quên mật khẩu: sai định dạng băm là khóa
+  // vĩnh viễn, nên phải kiểm chéo giữa hai runtime chứ không tin vào việc "hai
+  // bên dùng chung một file".
+  const password = "matkhaucuuho2026";
+  const hash = await hashPassword(password);
+
+  const accepted = await anonymous("/api/dev/verify-hash", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ password, hash }),
+  });
+  assert.equal((await accepted.json()).valid, true, "worker không đọc được băm sinh từ Node");
+
+  const rejected = await anonymous("/api/dev/verify-hash", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ password: "sai-mat-khau", hash }),
+  });
+  assert.equal((await rejected.json()).valid, false);
 });
 
 /* ------------------------------------------------------------------ */

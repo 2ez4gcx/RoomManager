@@ -13,6 +13,9 @@ const SESSION_COOKIE = "rm_session";
 /** Đường dẫn ai cũng vào được. */
 const PUBLIC_PREFIXES = [
   "/login",
+  // Người quên mật khẩu chưa đăng nhập được nên trang này phải mở. Quyền nằm
+  // ở token trong link: khó đoán, hết hạn sau một giờ, dùng một lần.
+  "/dat-lai-mat-khau",
   "/booking",
   "/api/auth/",
   // Nhận yêu cầu từ biểu mẫu công khai; route chỉ ghi, không đọc dữ liệu riêng tư.
@@ -20,6 +23,8 @@ const PUBLIC_PREFIXES = [
   // Phải mở ở đây vì cần chạy khi chưa có tài khoản nào. Route tự khóa bằng
   // `import.meta.env.DEV` và `ALLOW_DEV_SETUP`, xem app/api/dev/setup/route.ts.
   "/api/dev/setup",
+  "/api/dev/verify-hash",
+  "/api/dev/totp",
   "/_next",
   "/favicon",
   "/og.png",

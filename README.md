@@ -13,7 +13,7 @@ Toàn bộ giao diện đã chạy trên dữ liệu thật, có đăng nhập.
 - **Đơn thu** — xem chi tiết từng dòng (tiền phòng, điện, nước, dịch vụ), ghi nhận thanh toán một phần hoặc toàn phần, lọc theo kỳ.
 - **Thu chi** — sổ thu chi, biểu đồ 6 tháng, cơ cấu chi; thanh toán tự sinh dòng thu.
 - **Cài đặt** — bảng giá điện/nước/dịch vụ, chu kỳ thu, thời gian giữ phòng, đổi mật khẩu, bật/tắt xác thực hai bước.
-- **Tài khoản** (chỉ chủ nhà) — tạo tài khoản nhân viên, đổi vai trò, khóa/mở khóa, đặt lại mật khẩu.
+- **Tài khoản** (chỉ chủ nhà) — tạo tài khoản nhân viên, đổi vai trò, khóa/mở khóa, đặt lại mật khẩu, cấp link quên mật khẩu.
 - **Trang công khai** `/booking` — hiện phòng còn trống theo thời gian thực, khách gửi yêu cầu xem phòng.
 
 Các ràng buộc nghiệp vụ đang được kiểm thử tự động: không hai hợp đồng trên một phòng, không hai người giữ cùng một phòng, không cho thuê phòng bảo trì, không thu vượt số còn nợ, ký hợp đồng thì giải phóng chỗ giữ, và hệ thống luôn còn ít nhất một chủ nhà đăng nhập được.
@@ -22,7 +22,6 @@ Các ràng buộc nghiệp vụ đang được kiểm thử tự động: không
 
 **Chưa làm:**
 
-- Chưa có quên mật khẩu; cần dịch vụ gửi email, hiện chưa cấu hình.
 - Chưa lập đơn thu tự động theo kỳ; đơn hiện do dữ liệu mẫu tạo ra.
 - Nút "Xuất Excel", "Xuất báo cáo", "Gửi nhắc" mới là giao diện, chưa hoạt động.
 - Chưa chốt nền tảng lâu dài: đang chạy Cloudflare D1, phương án VPS/PostgreSQL vẫn để ngỏ.
@@ -74,11 +73,31 @@ Route `/api/dev/setup` mặc định bị khóa ngoài môi trường dev; bản
 npm test
 ```
 
-Chạy typecheck, build, rồi kiểm thử bản build trong Miniflare (workerd thật kèm D1 thật): 71 bài, gồm xác thực, quyền truy cập, ràng buộc nghiệp vụ và kiểm tra trang công khai không lộ dữ liệu khách thuê.
+Chạy typecheck, build, rồi kiểm thử bản build trong Miniflare (workerd thật kèm D1 thật): 79 bài, gồm xác thực, quyền truy cập, ràng buộc nghiệp vụ và kiểm tra trang công khai không lộ dữ liệu khách thuê.
 
 ```bash
 npm run lint
 ```
+
+## Quên mật khẩu
+
+Hệ thống **không gửi email**: Cloudflare Workers không mở được kết nối TCP nên không dùng SMTP trực tiếp, và chưa cấu hình dịch vụ gửi mail nào.
+
+Người quên mật khẩu báo chủ nhà. Chủ nhà vào trang **Tài khoản**, bấm *Link quên mật khẩu* ở dòng của người đó, rồi gửi link qua Zalo hoặc đọc qua điện thoại. Link sống một giờ, dùng được một lần, và khi đặt lại xong mọi thiết bị đang đăng nhập tài khoản đó bị đăng xuất.
+
+Link không tự đăng nhập — đặt xong vẫn phải đăng nhập bình thường, nên tài khoản có bật xác thực hai bước vẫn bị hỏi mã.
+
+### Khi chủ nhà duy nhất quên mật khẩu
+
+Lúc đó không ai cấp được link, phải sửa thẳng cơ sở dữ liệu:
+
+```bash
+npm run hash-password "mat khau moi cua ban"
+```
+
+Script in ra chuỗi băm kèm câu lệnh `wrangler d1 execute` để dán. Nó dùng chung module băm với máy chủ nên định dạng chắc chắn khớp — có bài kiểm thử đối chiếu giữa Node và workerd. Đăng nhập lại xong nhớ đổi mật khẩu ở trang Cài đặt.
+
+Cách phòng tránh tốt hơn: **luôn có ít nhất hai tài khoản chủ nhà**, để người này cấp link cho người kia.
 
 ## Đổi schema
 
@@ -100,6 +119,8 @@ Sinh migration mới vào `drizzle/`. Khi deploy, control plane tự áp SQL nà
 | `db/login-throttle.ts` | Giới hạn số lần đăng nhập sai |
 | `db/users.ts` | Quản lý tài khoản và phân quyền |
 | `db/totp.ts`, `db/two-factor.ts`, `db/qr.ts` | Xác thực hai bước, mã khôi phục và mã QR |
+| `db/password-reset.ts` | Link đặt lại mật khẩu dùng một lần |
+| `db/password-hash.ts` | Băm mật khẩu, dùng chung với script cứu hộ |
 | `proxy.ts` | Chặn điều hướng; xác thực thật nằm ở `requireUser()` và `requireApiUser()` |
 
 ## Tài liệu

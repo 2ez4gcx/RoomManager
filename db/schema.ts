@@ -118,6 +118,33 @@ export const loginAttempts = sqliteTable(
   ],
 );
 
+/**
+ * Link đặt lại mật khẩu do chủ nhà cấp.
+ *
+ * `id` là băm SHA-256 của token trong link, không phải chính token — rò rỉ bảng
+ * này không cho phép đặt lại mật khẩu của ai.
+ *
+ * Link chỉ dùng được một lần và hết hạn sau một giờ: nó là thứ ai cầm cũng dùng
+ * được, nên phải sống càng ngắn càng tốt.
+ */
+export const passwordResetTokens = sqliteTable(
+  "password_reset_tokens",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
+    usedAt: integer("used_at", { mode: "timestamp_ms" }),
+    /** Ai đã cấp link. Null khi hệ thống tự sinh trong quy trình cứu hộ. */
+    createdBy: text("created_by").references(() => users.id),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (table) => [index("password_reset_tokens_user_idx").on(table.userId)],
+);
+
 /* ------------------------------------------------------------------ */
 /* Tài sản                                                            */
 /* ------------------------------------------------------------------ */

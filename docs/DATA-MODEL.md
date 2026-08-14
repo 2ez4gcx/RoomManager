@@ -9,7 +9,7 @@
 
 | Nhóm | Bảng | Vai trò |
 |---|---|---|
-| Tổ chức | `users`, `sessions`, `login_attempts`, `recovery_codes` | Tài khoản, vai trò, phiên, lịch sử nhập sai và mã khôi phục 2FA |
+| Tổ chức | `users`, `sessions`, `login_attempts`, `recovery_codes`, `password_reset_tokens` | Tài khoản, vai trò, phiên, lịch sử nhập sai, mã khôi phục 2FA và link đặt lại mật khẩu |
 | Tài sản | `properties`, `room_types`, `rooms` | Hai nhà, loại phòng và 40 phòng cụ thể |
 | Khách | `guests` | Thông tin người thuê; số CCCD là dữ liệu nhạy cảm, không ra trang công khai |
 | Thuê | `contracts`, `contract_guests` | Thời hạn, giá, cọc và người cùng ở |
@@ -82,6 +82,18 @@ Hệ thống phải luôn còn ít nhất một chủ nhà đang hoạt động:
 chủ nhà cuối cùng đều bị từ chối. Không có ràng buộc này thì có thể rơi vào
 trạng thái không ai vào được trang quản lý tài khoản để sửa lại. Người dùng
 cũng không tự khóa hay tự hạ quyền chính mình.
+
+## Đặt lại mật khẩu
+
+`password_reset_tokens.id` lưu băm SHA-256 của token trong link, không lưu
+chính token — cùng nguyên tắc với `sessions`.
+
+Link sống một giờ và dùng một lần. Cấp link mới sẽ hủy mọi link chưa dùng của
+tài khoản đó: để nhiều link cùng sống nghĩa là mỗi lần bấm nhầm lại thêm một
+chìa khóa đang trôi nổi.
+
+Dùng link xong thì hủy toàn bộ phiên của tài khoản. Link **không** tự cấp phiên
+đăng nhập: nếu tự cấp thì nó thành đường vòng qua xác thực hai bước.
 
 ## Mật khẩu và phiên
 

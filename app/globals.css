@@ -321,3 +321,10 @@ input:disabled, select:disabled { background: #f4f2ec; color: #8b938f; cursor: n
 /* Mã QR cài đặt hai bước */
 .qr-wrap { display: grid; place-items: center; margin: 14px 0; }
 .qr-code { border: 1px solid var(--line); border-radius: 10px; background: #fff; }
+
+/* Ghi chú phụ dưới biểu mẫu đăng nhập */
+.login-note-tight { margin-top: 8px !important; padding-top: 0 !important; border-top: 0 !important; }
+.login-page .submit-button { text-decoration: none; }
+
+/* Link đặt lại mật khẩu */
+.reset-link-box { margin: 12px 0; padding: 12px; border-radius: 9px; background: #f4f2ec; border: 1px dashed var(--line); font-family: ui-monospace, monospace; font-size: 10px; line-height: 1.65; word-break: break-all; user-select: all; }
