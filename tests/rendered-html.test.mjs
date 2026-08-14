@@ -389,6 +389,186 @@ test("đổi mật khẩu thành công, hủy phiên khác nhưng giữ phiên �
 });
 
 /* ------------------------------------------------------------------ */
+/* Quản lý tài khoản                                                  */
+/* ------------------------------------------------------------------ */
+
+/** Lấy tài khoản theo email từ API quản lý. */
+async function findUser(email) {
+  const { users } = await (await authed("/api/users")).json();
+  return users.find((user) => user.email === email);
+}
+
+/** Đăng nhập rồi trả về cookie phiên. IP riêng cho mỗi lần để khỏi đụng giới hạn. */
+async function loginCookie(email, password, ip) {
+  const response = await anonymous("/api/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json", "cf-connecting-ip": ip },
+    body: JSON.stringify({ email, password }),
+  });
+  assert.equal(response.status, 200, `đăng nhập ${email} thất bại`);
+  return (response.headers.get("set-cookie") ?? "").split(";")[0];
+}
+
+function withCookie(cookie) {
+  return (pathname, init = {}) =>
+    mf.dispatchFetch(`http://localhost${pathname}`, {
+      ...init,
+      headers: { ...(init.headers ?? {}), cookie },
+      redirect: "manual",
+    });
+}
+
+test("chỉ chủ nhà xem được danh sách tài khoản", async () => {
+  assert.equal((await anonymous("/api/users")).status, 401);
+  assert.equal((await authed("/api/users")).status, 200);
+});
+
+test("tạo tài khoản nhân viên và đăng nhập được bằng tài khoản đó", async () => {
+  const created = await json("/api/users", {
+    email: "nhanvien@hoangan.vn",
+    fullName: "Nhân Viên Một",
+    phone: "0909112233",
+    password: "nhanvien123",
+    role: "staff",
+  });
+  assert.equal(created.status, 201);
+
+  const response = await anonymous("/api/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json", "cf-connecting-ip": "192.0.2.50" },
+    body: JSON.stringify({ email: "nhanvien@hoangan.vn", password: "nhanvien123" }),
+  });
+  assert.equal(response.status, 200);
+  assert.equal((await response.json()).user.role, "staff");
+});
+
+test("nhân viên không vào được trang và API dành riêng cho chủ nhà", async () => {
+  const asStaff = withCookie(
+    await loginCookie("nhanvien@hoangan.vn", "nhanvien123", "192.0.2.51"),
+  );
+
+  // Đọc dữ liệu vận hành thì được.
+  assert.equal((await asStaff("/api/rooms")).status, 200);
+
+  // Nhưng không được đụng vào tài khoản, nhà, loại phòng hay bảng giá.
+  assert.equal((await asStaff("/api/users")).status, 403);
+  assert.equal((await asStaff("/api/properties")).status, 403);
+  assert.equal((await asStaff("/api/room-types")).status, 403);
+
+  // Trang quản lý tài khoản đẩy nhân viên đi chỗ khác.
+  const page = await asStaff("/users");
+  assert.equal(page.status, 307);
+});
+
+test("từ chối email trùng và mật khẩu quá ngắn", async () => {
+  const duplicate = await json("/api/users", {
+    email: "nhanvien@hoangan.vn",
+    fullName: "Trùng Email",
+    password: "matkhau12345",
+    role: "staff",
+  });
+  const shortPassword = await json("/api/users", {
+    email: "nguoimoi@hoangan.vn",
+    fullName: "Mật Khẩu Ngắn",
+    password: "abc",
+    role: "staff",
+  });
+
+  assert.equal(duplicate.status, 400);
+  assert.match((await duplicate.json()).error, /đã được dùng/);
+  assert.equal(shortPassword.status, 400);
+  assert.match((await shortPassword.json()).error, /ít nhất 8 ký tự/);
+});
+
+test("khóa tài khoản thì đăng xuất ngay và không đăng nhập lại được", async () => {
+  const cookie = await loginCookie("nhanvien@hoangan.vn", "nhanvien123", "192.0.2.52");
+  const asStaff = withCookie(cookie);
+  assert.equal((await asStaff("/api/rooms")).status, 200, "tiền đề: phiên phải dùng được");
+
+  const staff = await findUser("nhanvien@hoangan.vn");
+  assert.equal((await json("/api/users", { id: staff.id, isActive: false }, "PATCH")).status, 200);
+
+  // Khóa mà phiên vẫn sống thì việc khóa không có tác dụng ngay.
+  assert.equal((await asStaff("/api/rooms")).status, 401, "phiên cũ vẫn dùng được sau khi khóa");
+
+  const relogin = await anonymous("/api/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json", "cf-connecting-ip": "192.0.2.53" },
+    body: JSON.stringify({ email: "nhanvien@hoangan.vn", password: "nhanvien123" }),
+  });
+  assert.equal(relogin.status, 401);
+
+  // Mở khóa lại thì vào được.
+  assert.equal((await json("/api/users", { id: staff.id, isActive: true }, "PATCH")).status, 200);
+  await loginCookie("nhanvien@hoangan.vn", "nhanvien123", "192.0.2.54");
+});
+
+test("chủ nhà đặt lại mật khẩu cho người khác, phiên của người đó bị hủy", async () => {
+  const asStaff = withCookie(
+    await loginCookie("nhanvien@hoangan.vn", "nhanvien123", "192.0.2.55"),
+  );
+
+  const staff = await findUser("nhanvien@hoangan.vn");
+  const reset = await json("/api/users", { id: staff.id, newPassword: "matkhaumoi456" }, "PATCH");
+  assert.equal(reset.status, 200);
+
+  assert.equal((await asStaff("/api/rooms")).status, 401);
+  await loginCookie("nhanvien@hoangan.vn", "matkhaumoi456", "192.0.2.56");
+});
+
+test("không tự khóa hay tự hạ quyền chính mình", async () => {
+  const me = await findUser(OWNER_EMAIL);
+
+  const selfLock = await json("/api/users", { id: me.id, isActive: false }, "PATCH");
+  const selfDemote = await json("/api/users", { id: me.id, role: "staff" }, "PATCH");
+
+  assert.equal(selfLock.status, 400);
+  assert.match((await selfLock.json()).error, /chính mình/);
+  assert.equal(selfDemote.status, 400);
+  assert.match((await selfDemote.json()).error, /chính mình/);
+});
+
+test("luôn phải còn ít nhất một chủ nhà đang hoạt động", async () => {
+  const { users } = await (await authed("/api/users")).json();
+  const me = users.find((user) => user.email === OWNER_EMAIL);
+
+  // Hạ mọi chủ nhà khác xuống nhân viên, chừa lại đúng một người.
+  for (const owner of users.filter(
+    (user) => user.role === "owner" && user.isActive && user.id !== me.id,
+  )) {
+    assert.equal((await json("/api/users", { id: owner.id, role: "staff" }, "PATCH")).status, 200);
+  }
+
+  // Cấp quyền chủ nhà cho nhân viên rồi hạ lại: được, vì vẫn còn chủ nhà khác.
+  const staff = await findUser("nhanvien@hoangan.vn");
+  assert.equal((await json("/api/users", { id: staff.id, role: "owner" }, "PATCH")).status, 200);
+  assert.equal((await json("/api/users", { id: staff.id, role: "staff" }, "PATCH")).status, 200);
+
+  // Khóa chủ nhà cuối cùng thì bị chặn. Dùng một tài khoản chủ nhà khác để
+  // thao tác, vì tự khóa mình đã bị chặn bởi ràng buộc riêng.
+  assert.equal((await json("/api/users", { id: staff.id, role: "owner" }, "PATCH")).status, 200);
+  const asOtherOwner = withCookie(
+    await loginCookie("nhanvien@hoangan.vn", "matkhaumoi456", "192.0.2.57"),
+  );
+  assert.equal((await json("/api/users", { id: staff.id, role: "staff" }, "PATCH")).status, 200);
+
+  const lockLastOwner = await asOtherOwner("/api/users", {
+    method: "PATCH",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ id: me.id, isActive: false }),
+  });
+  assert.equal(lockLastOwner.status, 403, "nhân viên không được khóa tài khoản nào");
+});
+
+test("trang quản lý tài khoản kết xuất được cho chủ nhà", async () => {
+  const response = await authed("/users");
+  assert.equal(response.status, 200);
+
+  const html = await response.text();
+  assert.match(html, /nhanvien@hoangan.vn/);
+});
+
+/* ------------------------------------------------------------------ */
 /* Kết xuất trang                                                     */
 /* ------------------------------------------------------------------ */
 

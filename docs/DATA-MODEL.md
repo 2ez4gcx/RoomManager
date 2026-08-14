@@ -68,6 +68,21 @@ và chưa có kênh khôi phục nào khác.
 Lần thử được **ghi trước rồi mới đếm**. Nếu đếm trước, một loạt yêu cầu gửi song
 song sẽ cùng đọc bộ đếm cũ và đều lọt qua, tức bắn đồng thời là lách được.
 
+## Vòng đời tài khoản
+
+Tài khoản **không bị xóa cứng**: `contracts.created_by`, `payments.recorded_by`
+và `audit_logs.actor_id` đều trỏ tới `users`, xóa đi là mất dấu vết ai đã làm
+gì. Thay vào đó dùng cờ `users.is_active`.
+
+Khóa tài khoản sẽ xóa luôn mọi phiên của người đó. Nếu chỉ đặt cờ mà giữ phiên
+thì họ vẫn dùng tiếp được tới khi phiên hết hạn, tức việc khóa không có tác
+dụng ngay.
+
+Hệ thống phải luôn còn ít nhất một chủ nhà đang hoạt động: khóa hoặc hạ quyền
+chủ nhà cuối cùng đều bị từ chối. Không có ràng buộc này thì có thể rơi vào
+trạng thái không ai vào được trang quản lý tài khoản để sửa lại. Người dùng
+cũng không tự khóa hay tự hạ quyền chính mình.
+
 ## Mật khẩu và phiên
 
 Mật khẩu băm bằng PBKDF2-SHA256 (Web Crypto), vì Workers không chạy được

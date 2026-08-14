@@ -2,7 +2,7 @@
 
 import {
   ArrowRight, BedDouble, Building2, CalendarDays, CreditCard, FileText,
-  LayoutDashboard, LogOut, Menu, Plus, Search, Settings, Users, X,
+  LayoutDashboard, LogOut, Menu, Plus, Search, Settings, UserCog, Users, X,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import Link from "next/link";
@@ -59,6 +59,12 @@ export function AppShell({ children, currentUser, searchValue = "", onSearch, se
             </Link>
           ))}
           <p className="nav-label nav-label-spaced">HỆ THỐNG</p>
+          {/* Quản lý tài khoản chỉ dành cho chủ nhà; máy chủ cũng chặn lại ở trang. */}
+          {currentUser.role === "owner" && (
+            <Link className={`nav-item ${pathname === "/users" ? "active" : ""}`} href="/users" onClick={() => setMobileNav(false)}>
+              <UserCog size={18} /><span>Tài khoản</span>
+            </Link>
+          )}
           <Link className={`nav-item ${pathname === "/settings" ? "active" : ""}`} href="/settings" onClick={() => setMobileNav(false)}><Settings size={18} /><span>Cài đặt</span></Link>
         </nav>
         <div className="sidebar-card">

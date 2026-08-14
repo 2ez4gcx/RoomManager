@@ -297,3 +297,10 @@ button.property-card { width: 100%; text-align: left; font: inherit; color: inhe
 .form-grid-three { grid-template-columns: 1fr 1fr 1fr; }
 .heading-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 input:disabled, select:disabled { background: #f4f2ec; color: #8b938f; cursor: not-allowed; }
+
+/* Nút thao tác trong bảng tài khoản */
+.row-actions { display: flex; gap: 6px; justify-content: flex-end; }
+.row-actions .secondary-button { padding: 6px 9px; font-size: 10px; white-space: nowrap; }
+.row-actions .secondary-button[disabled] { opacity: .45; cursor: not-allowed; }
+.data-table select { border: 1px solid var(--line); border-radius: 7px; padding: 5px 7px; font-size: 10px; background: var(--paper); }
+.data-table select:disabled { opacity: .6; cursor: not-allowed; }
