@@ -169,6 +169,120 @@ test("route dựng dữ liệu bị khóa khi không khai báo ALLOW_DEV_SETUP",
 });
 
 /* ------------------------------------------------------------------ */
+/* Giới hạn số lần đăng nhập sai                                      */
+/* ------------------------------------------------------------------ */
+
+/** Đăng nhập kèm IP giả, để mỗi bài kiểm thử có bộ đếm riêng. */
+function loginFrom(ip, login, password) {
+  return mf.dispatchFetch("http://localhost/api/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json", "cf-connecting-ip": ip },
+    body: JSON.stringify({ email: login, password }),
+    redirect: "manual",
+  });
+}
+
+test("khóa tạm sau 5 lần sai và trả 429 kèm Retry-After", async () => {
+  const ip = "203.0.113.10";
+
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
+    const response = await loginFrom(ip, OWNER_EMAIL, `sai-${attempt}`);
+    assert.equal(response.status, 401, `lần ${attempt} phải là 401`);
+  }
+
+  const blocked = await loginFrom(ip, OWNER_EMAIL, "sai-6");
+  assert.equal(blocked.status, 429);
+  assert.ok(Number(blocked.headers.get("retry-after")) > 0, "thiếu Retry-After");
+
+  const payload = await blocked.json();
+  assert.match(payload.error, /quá nhiều lần/);
+  assert.ok(payload.retryAfterSeconds > 0);
+});
+
+test("mật khẩu đúng cũng bị chặn khi đang trong thời gian khóa", async () => {
+  const ip = "203.0.113.11";
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    await loginFrom(ip, OWNER_EMAIL, "sai");
+  }
+
+  // Đây là điểm mấu chốt: khóa rồi thì mật khẩu đúng cũng không vào được,
+  // nếu không kẻ tấn công vẫn dò được tới khi trúng.
+  const response = await loginFrom(ip, OWNER_EMAIL, OWNER_PASSWORD);
+  assert.equal(response.status, 429);
+});
+
+test("khóa chỉ áp cho cặp tài khoản và IP đó, không khóa người dùng thật", async () => {
+  const attacker = "203.0.113.12";
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    await loginFrom(attacker, OWNER_EMAIL, "sai");
+  }
+  assert.equal((await loginFrom(attacker, OWNER_EMAIL, OWNER_PASSWORD)).status, 429);
+
+  // Chính chủ ở IP khác vẫn đăng nhập bình thường. Nếu khóa theo riêng tài
+  // khoản thì người ngoài chỉ cần biết email là khóa được chủ nhà.
+  const owner = await loginFrom("198.51.100.7", OWNER_EMAIL, OWNER_PASSWORD);
+  assert.equal(owner.status, 200);
+});
+
+test("đăng nhập đúng xóa lịch sử sai, không cộng dồn sang lần sau", async () => {
+  const ip = "203.0.113.13";
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    await loginFrom(ip, OWNER_EMAIL, "sai");
+  }
+  assert.equal((await loginFrom(ip, OWNER_EMAIL, OWNER_PASSWORD)).status, 200);
+
+  // Bộ đếm đã được xóa nên 4 lần sai tiếp theo vẫn chưa chạm ngưỡng.
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    assert.equal((await loginFrom(ip, OWNER_EMAIL, "sai")).status, 401);
+  }
+  assert.equal((await loginFrom(ip, OWNER_EMAIL, OWNER_PASSWORD)).status, 200);
+});
+
+test("một IP rải nhiều tài khoản khác nhau vẫn bị chặn", async () => {
+  const ip = "203.0.113.14";
+
+  // Mỗi tài khoản chỉ thử 4 lần nên không chạm ngưỡng theo cặp; ngưỡng theo
+  // IP mới là thứ bắt được kiểu tấn công này.
+  for (let account = 0; account < 5; account += 1) {
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      await loginFrom(ip, `nguoi-dung-${account}@example.com`, "matkhauphobien");
+    }
+  }
+
+  const response = await loginFrom(ip, "nguoi-dung-moi@example.com", "matkhauphobien");
+  assert.equal(response.status, 429);
+});
+
+test("bắn nhiều yêu cầu song song không lách được giới hạn", async () => {
+  const ip = "203.0.113.16";
+
+  // Gửi 12 yêu cầu cùng lúc. Nếu đếm trước rồi mới ghi thì tất cả cùng đọc bộ
+  // đếm cũ và đều lọt qua; ghi trước khi đếm thì phần lớn phải bị chặn.
+  const responses = await Promise.all(
+    Array.from({ length: 12 }, () => loginFrom(ip, OWNER_EMAIL, "sai")),
+  );
+  const blocked = responses.filter((response) => response.status === 429).length;
+
+  assert.ok(
+    blocked >= 5,
+    `chỉ ${blocked}/12 yêu cầu song song bị chặn, giới hạn đang bị lách`,
+  );
+  assert.equal((await loginFrom(ip, OWNER_EMAIL, OWNER_PASSWORD)).status, 429);
+});
+
+test("tài khoản không tồn tại cũng bị đếm, không tiết lộ tài khoản nào có thật", async () => {
+  const ip = "203.0.113.15";
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const response = await loginFrom(ip, "hoan-toan-khong-co@example.com", "gi-do");
+    assert.equal(response.status, 401);
+  }
+  assert.equal(
+    (await loginFrom(ip, "hoan-toan-khong-co@example.com", "gi-do")).status,
+    429,
+  );
+});
+
+/* ------------------------------------------------------------------ */
 /* Đổi mật khẩu                                                       */
 /* ------------------------------------------------------------------ */
 

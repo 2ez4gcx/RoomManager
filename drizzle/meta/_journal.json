@@ -15,6 +15,13 @@
       "when": 1786517141851,
       "tag": "0001_curly_magneto",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1786673057568,
+      "tag": "0002_smooth_martin_li",
+      "breakpoints": true
     }
   ]
 }

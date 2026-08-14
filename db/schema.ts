@@ -61,6 +61,32 @@ export const sessions = sqliteTable(
   (table) => [index("sessions_user_idx").on(table.userId)],
 );
 
+/**
+ * Lần đăng nhập sai, dùng để chặn dò mật khẩu.
+ *
+ * Chỉ ghi lần THẤT BẠI. Đăng nhập thành công thì xóa các bản ghi của cùng cặp
+ * định danh + IP, nên bảng này không phình theo lượng đăng nhập bình thường.
+ *
+ * `identifier` là chuỗi người dùng gõ vào ô đăng nhập, ghi lại kể cả khi
+ * không có tài khoản nào trùng — nếu chỉ đếm cho tài khoản có thật thì thời
+ * gian phản hồi sẽ tiết lộ tài khoản nào tồn tại.
+ */
+export const loginAttempts = sqliteTable(
+  "login_attempts",
+  {
+    id: text("id").primaryKey(),
+    identifier: text("identifier").notNull(),
+    ip: text("ip").notNull(),
+    createdAt: integer("created_at", { mode: "timestamp_ms" })
+      .notNull()
+      .default(sql`(unixepoch() * 1000)`),
+  },
+  (table) => [
+    index("login_attempts_lookup_idx").on(table.identifier, table.ip, table.createdAt),
+    index("login_attempts_ip_idx").on(table.ip, table.createdAt),
+  ],
+);
+
 /* ------------------------------------------------------------------ */
 /* Tài sản                                                            */
 /* ------------------------------------------------------------------ */

@@ -6,7 +6,7 @@ Webapp quản lý nhà trọ: tình trạng phòng, khách thuê, hợp đồng,
 
 Toàn bộ giao diện đã chạy trên dữ liệu thật, có đăng nhập.
 
-- **Đăng nhập** bằng email + mật khẩu (PBKDF2, phiên lưu cookie `HttpOnly`). Mọi trang và API quản trị đều bị khóa; chỉ `/booking` và `/login` là công khai.
+- **Đăng nhập** bằng email hoặc tên đăng nhập + mật khẩu (PBKDF2, phiên lưu cookie `HttpOnly`), có giới hạn số lần nhập sai. Mọi trang và API quản trị đều bị khóa; chỉ `/booking` và `/login` là công khai.
 - **Nhà & phòng** — thêm nhà mới, thêm loại phòng, thêm phòng. Trạng thái phòng được **suy ra** từ hợp đồng, giữ chỗ và bảo trì, không lưu cờ riêng.
 - **Khách thuê** — tạo hồ sơ và hợp đồng cùng lúc, theo dõi công nợ và hạn hợp đồng.
 - **Đặt phòng** — bảng kanban 4 trạng thái, xác nhận là giữ chỗ có hạn.
@@ -20,7 +20,7 @@ Các ràng buộc nghiệp vụ đang được kiểm thử tự động: không
 **Chưa làm:**
 
 - Chưa có quên mật khẩu (cần gửi email) hay màn hình quản lý tài khoản nhân viên; schema đã có `users.role` và phân quyền chủ nhà/nhân viên đã áp dụng.
-- Chưa có 2FA, chưa giới hạn số lần đăng nhập sai.
+- Chưa có 2FA.
 - Chưa lập đơn thu tự động theo kỳ; đơn hiện do dữ liệu mẫu tạo ra.
 - Nút "Xuất Excel", "Xuất báo cáo", "Gửi nhắc" mới là giao diện, chưa hoạt động.
 - Chưa chốt nền tảng lâu dài: đang chạy Cloudflare D1, phương án VPS/PostgreSQL vẫn để ngỏ.
@@ -72,7 +72,7 @@ Route `/api/dev/setup` mặc định bị khóa ngoài môi trường dev; bản
 npm test
 ```
 
-Chạy typecheck, build, rồi kiểm thử bản build trong Miniflare (workerd thật kèm D1 thật): 46 bài, gồm xác thực, quyền truy cập, ràng buộc nghiệp vụ và kiểm tra trang công khai không lộ dữ liệu khách thuê.
+Chạy typecheck, build, rồi kiểm thử bản build trong Miniflare (workerd thật kèm D1 thật): 53 bài, gồm xác thực, quyền truy cập, ràng buộc nghiệp vụ và kiểm tra trang công khai không lộ dữ liệu khách thuê.
 
 ```bash
 npm run lint
@@ -95,6 +95,7 @@ Sinh migration mới vào `drizzle/`. Khi deploy, control plane tự áp SQL nà
 | `db/queries.ts`, `db/queries-extra.ts` | Truy vấn đọc, gồm cả suy ra trạng thái phòng |
 | `db/mutations.ts`, `db/bookings.ts`, `db/finance.ts`, `db/settings.ts` | Thao tác ghi kèm kiểm tra dữ liệu |
 | `db/auth.ts` | Băm mật khẩu, đổi mật khẩu và quản lý phiên |
+| `db/login-throttle.ts` | Giới hạn số lần đăng nhập sai |
 | `proxy.ts` | Chặn điều hướng; xác thực thật nằm ở `requireUser()` và `requireApiUser()` |
 
 ## Tài liệu

@@ -1,11 +1,20 @@
 "use client";
 
 import { BedDouble, LogIn, ShieldCheck } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 export function LoginClient() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [lockedFor, setLockedFor] = useState(0);
+
+  // Đếm ngược thời gian tạm khóa. Chỉ là tiện ích hiển thị; việc chặn thật nằm
+  // ở máy chủ, tải lại trang không bỏ qua được.
+  useEffect(() => {
+    if (lockedFor <= 0) return;
+    const timer = window.setInterval(() => setLockedFor((left) => Math.max(left - 1, 0)), 1000);
+    return () => window.clearInterval(timer);
+  }, [lockedFor]);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -21,8 +30,12 @@ export function LoginClient() {
       });
 
       if (!response.ok) {
-        const payload = (await response.json()) as { error?: string };
+        const payload = (await response.json()) as { error?: string; retryAfterSeconds?: number };
         setError(payload.error ?? "Đăng nhập không thành công.");
+        // 429 = bị tạm khóa; chặn luôn nút gửi cho tới khi hết thời gian chờ.
+        if (response.status === 429 && payload.retryAfterSeconds) {
+          setLockedFor(payload.retryAfterSeconds);
+        }
         return;
       }
 
@@ -56,8 +69,13 @@ export function LoginClient() {
             <input name="password" type="password" required autoComplete="current-password" placeholder="••••••••" />
           </label>
           {error && <p className="form-error" role="alert">{error}</p>}
-          <button className="submit-button" type="submit" disabled={busy}>
-            <LogIn size={16} /> {busy ? "Đang kiểm tra..." : "Đăng nhập"}
+          <button className="submit-button" type="submit" disabled={busy || lockedFor > 0}>
+            <LogIn size={16} />
+            {lockedFor > 0
+              ? `Thử lại sau ${lockedFor} giây`
+              : busy
+                ? "Đang kiểm tra..."
+                : "Đăng nhập"}
           </button>
         </form>
 

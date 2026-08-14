@@ -9,7 +9,7 @@
 
 | Nhóm | Bảng | Vai trò |
 |---|---|---|
-| Tổ chức | `users`, `sessions` | Tài khoản, vai trò chủ nhà/nhân viên và phiên đăng nhập |
+| Tổ chức | `users`, `sessions`, `login_attempts` | Tài khoản, vai trò, phiên đăng nhập và lịch sử nhập sai |
 | Tài sản | `properties`, `room_types`, `rooms` | Hai nhà, loại phòng và 40 phòng cụ thể |
 | Khách | `guests` | Thông tin người thuê; số CCCD là dữ liệu nhạy cảm, không ra trang công khai |
 | Thuê | `contracts`, `contract_guests` | Thời hạn, giá, cọc và người cùng ở |
@@ -49,6 +49,24 @@ Một phòng chỉ được giữ cho đúng một yêu cầu tại một thời
 thứ hai sẽ bị từ chối. Khi hợp đồng được ký cho phòng đó, `hold_until` của mọi
 yêu cầu đã xác nhận trên phòng được xóa — nếu không, sau khi hợp đồng kết thúc
 phòng sẽ hiện lại "Đã giữ" do một chỗ giữ cũ đã hết ý nghĩa.
+
+## Giới hạn số lần đăng nhập sai
+
+`login_attempts` đếm lần nhập sai trong cửa sổ trượt 15 phút. Hai ngưỡng:
+
+- 5 lần cho một cặp (định danh + IP).
+- 20 lần cho một IP, tính trên mọi định danh — bắt kiểu rải một mật khẩu phổ
+  biến lên nhiều tài khoản.
+
+Cố ý **không** khóa theo riêng tài khoản: khi đó người ngoài chỉ cần biết email
+của chủ nhà là nhập sai liên tục để khóa chính chủ ra khỏi hệ thống. Gắn thêm IP
+thì kẻ tấn công chỉ tự khóa mình.
+
+Khóa tự hết sau cửa sổ, không cần ai mở thủ công — hệ thống chỉ có một chủ nhà
+và chưa có kênh khôi phục nào khác.
+
+Lần thử được **ghi trước rồi mới đếm**. Nếu đếm trước, một loạt yêu cầu gửi song
+song sẽ cùng đọc bộ đếm cũ và đều lọt qua, tức bắn đồng thời là lách được.
 
 ## Mật khẩu và phiên
 

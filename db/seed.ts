@@ -12,6 +12,7 @@ import { newId } from "./ids";
 import {
   auditLogs,
   bookingRequests,
+  loginAttempts,
   sessions,
   contractGuests,
   contracts,
@@ -115,6 +116,7 @@ const MAINTENANCE_ROOMS = new Set([5, 35]);
 /** Xóa sạch dữ liệu theo thứ tự ngược khóa ngoại. */
 export async function clearAll(db: Db) {
   for (const table of [
+    loginAttempts,
     sessions,
     auditLogs,
     ledgerEntries,
