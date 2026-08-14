@@ -266,7 +266,7 @@ function AddUserModal({
         </div>
         <label>
           Email hoặc tên đăng nhập
-          <input name="email" required placeholder="nhanvien@hoangan.vn" />
+          <input name="email" required placeholder="nhanvien@nhatro.vn" />
         </label>
         <div className="form-grid">
           <label>

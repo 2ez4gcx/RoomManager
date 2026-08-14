@@ -35,23 +35,17 @@ import {
 type Db = ReturnType<typeof getDb>;
 
 /**
- * Tài khoản chủ nhà của dữ liệu mẫu.
+ * Tài khoản chủ nhà của DỮ LIỆU MẪU.
  *
- * Đây là mật khẩu công khai trong mã nguồn, chỉ dùng để chạy thử ở máy local.
- * Trước khi đưa hệ thống lên Internet phải tạo tài khoản thật và đổi mật khẩu.
+ * Chỉ tồn tại trong cơ sở dữ liệu dùng để chạy thử và kiểm thử tự động. Mật
+ * khẩu nằm công khai trong mã nguồn, nên dữ liệu mẫu tuyệt đối không được nạp
+ * vào cơ sở dữ liệu thật.
+ *
+ * Muốn dùng thật thì khởi tạo trống rồi tạo tài khoản riêng — xem mục "Dùng
+ * thật" trong README.
  */
 export const OWNER_EMAIL = "quanly@hoangan.vn";
 export const OWNER_PASSWORD = "roommanager";
-
-/**
- * Tài khoản gõ nhanh khi chạy thử tại máy. Vai trò chủ nhà để thử được cả
- * những thao tác chỉ chủ nhà mới làm được (thêm nhà, đổi bảng giá).
- *
- * Mật khẩu cực yếu và nằm công khai trong mã nguồn. Phải xóa tài khoản này
- * trước khi đưa hệ thống lên Internet — xem mục "Nguồn mã" trong README.
- */
-export const TEST_LOGIN = "test";
-export const TEST_PASSWORD = "test";
 
 function isoDate(date: Date) {
   return date.toISOString().slice(0, 10);
@@ -147,14 +141,6 @@ export async function seed(db: Db) {
     phone: "0901234567",
     role: "owner",
     passwordHash: await hashPassword(OWNER_PASSWORD),
-  });
-
-  await db.insert(users).values({
-    id: newId("usr"),
-    email: TEST_LOGIN,
-    fullName: "Tài khoản thử",
-    role: "owner",
-    passwordHash: await hashPassword(TEST_PASSWORD),
   });
 
   /* --- Nhà và loại phòng ------------------------------------------ */

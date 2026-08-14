@@ -33,39 +33,65 @@ Các ràng buộc nghiệp vụ đang được kiểm thử tự động: không
 
 Yêu cầu Node.js `>=22.13.0`.
 
-### Cách nhanh (Windows)
+Có hai kiểu chạy, đừng trộn lẫn:
+
+- **Xem thử** — nạp dữ liệu mẫu để bấm thử mọi màn hình. Tài khoản và mật khẩu nằm công khai trong mã nguồn.
+- **Dùng thật** — khởi tạo trống, tự tạo tài khoản của mình rồi nhập dữ liệu nhà trọ.
+
+### Xem thử (Windows)
 
 Nhấp đúp `start.bat`. File này tự kiểm tra Node.js, cài thư viện lần đầu, khởi động server, dựng bảng và nạp dữ liệu mẫu nếu cơ sở dữ liệu còn trống, rồi mở trình duyệt. Đóng cửa sổ đen để dừng server.
 
-Muốn xoá sạch và nạp lại dữ liệu mẫu: nhấp đúp `reset-data.bat` (phải chạy `start.bat` trước, và gõ `xoa` để xác nhận).
+Đăng nhập: `quanly@hoangan.vn` / `roommanager`.
 
-### Cách thủ công
+Đây là tài khoản của **dữ liệu mẫu**, mật khẩu nằm công khai trong `db/seed.ts` và bị xoá/tạo lại mỗi lần nạp lại mẫu. Không bao giờ để tài khoản này tồn tại trên cơ sở dữ liệu thật.
+
+Muốn xoá sạch và nạp lại dữ liệu mẫu: nhấp đúp `reset-data.bat` (gõ `xoa` để xác nhận).
+
+### Xem thử (thủ công)
 
 ```bash
 npm install
 npm run dev
 ```
 
-Lần đầu chạy, dựng bảng và nạp dữ liệu mẫu (2 nhà, 40 phòng, 32 hợp đồng, 32 đơn thu):
+Dựng bảng và nạp dữ liệu mẫu — 2 nhà, 40 phòng, 32 hợp đồng, 32 đơn thu:
 
 ```bash
 npm run db:setup
 ```
-
-Mở `http://localhost:3000` và đăng nhập bằng một trong hai tài khoản mẫu:
-
-| Đăng nhập | Mật khẩu | Vai trò |
-|---|---|---|
-| `test` | `test` | Chủ nhà — gõ nhanh khi chạy thử |
-| `quanly@hoangan.vn` | `roommanager` | Chủ nhà |
-
-Cả hai đều là tài khoản của **dữ liệu mẫu**, mật khẩu nằm công khai trong `db/seed.ts` và bị xoá/tạo lại mỗi lần chạy `reset-data.bat`. Phải xoá chúng và tạo tài khoản thật trước khi đưa lên Internet.
 
 Xóa sạch và nạp lại từ đầu:
 
 ```bash
 npm run db:reset
 ```
+
+### Dùng thật
+
+Bắt đầu bằng cơ sở dữ liệu **trống**, không có dữ liệu mẫu và không có tài khoản mẫu.
+
+Trên Windows, khi server đang chạy: nhấp đúp `khoi-tao-that.bat`. File này xoá sạch cơ sở dữ liệu (gõ `dung that` để xác nhận), rồi hỏi email, họ tên và mật khẩu để tạo tài khoản chủ nhà đầu tiên.
+
+Làm thủ công thì hai bước:
+
+```bash
+curl -X POST "http://localhost:3000/api/dev/setup?empty=true"
+```
+
+```bash
+curl -X POST http://localhost:3000/api/dev/create-owner   -H "content-type: application/json"   -d "{\"email\":\"email@cua-ban.vn\",\"fullName\":\"Họ Tên\",\"password\":\"mật khẩu ít nhất 8 ký tự\"}"
+```
+
+Route `create-owner` chỉ chạy khi cơ sở dữ liệu **chưa có tài khoản nào**; từ tài khoản thứ hai trở đi thì tạo ở trang **Tài khoản**.
+
+Trên Cloudflare thì khác — dùng `npm run create-owner`, xem [docs/DEPLOY-CLOUDFLARE.md](docs/DEPLOY-CLOUDFLARE.md). Đừng chạy lệnh `wrangler d1 execute --local` mà script đó in ra: wrangler mở một file SQLite khác với file `npm run dev` đang dùng, tài khoản tạo xong sẽ không đăng nhập được.
+
+Sau khi đăng nhập lần đầu: đổi mật khẩu ở trang **Cài đặt** (mật khẩu vừa gõ đang nằm trong lịch sử lệnh của terminal), bật **xác thực hai bước**, và tạo thêm **một tài khoản chủ nhà thứ hai** để phòng khi quên mật khẩu.
+
+Từ lúc này, **đừng chạy `reset-data.bat` hay `npm run db:reset` nữa** — chúng xóa sạch dữ liệu thật rồi thay bằng dữ liệu mẫu, không hoàn tác được.
+
+> **Chạy thật trên máy local là tạm bợ.** Dữ liệu nằm trong `.wrangler/state`, không có sao lưu, không có HTTPS, và máy tắt là mất truy cập. Dùng lâu dài thì đưa lên Cloudflare — xem [docs/DEPLOY-CLOUDFLARE.md](docs/DEPLOY-CLOUDFLARE.md), ở đó D1 có Time Travel giữ 30 ngày.
 
 Route `/api/dev/setup` mặc định bị khóa ngoài môi trường dev; bản build production chỉ mở khi khai báo `ALLOW_DEV_SETUP=true`.
 
@@ -114,7 +140,7 @@ Sinh migration mới vào `drizzle/`. Khi deploy, control plane tự áp SQL nà
 | Thư mục | Vai trò |
 |---|---|
 | `app/` | Trang (server component) + client component tương ứng, API route trong `app/api/` |
-| `db/schema.ts` | 18 bảng Drizzle |
+| `db/schema.ts` | 21 bảng Drizzle |
 | `db/queries.ts`, `db/queries-extra.ts` | Truy vấn đọc, gồm cả suy ra trạng thái phòng |
 | `db/mutations.ts`, `db/bookings.ts`, `db/finance.ts`, `db/settings.ts` | Thao tác ghi kèm kiểm tra dữ liệu |
 | `db/auth.ts` | Băm mật khẩu, đổi mật khẩu và quản lý phiên |
@@ -140,10 +166,14 @@ Sinh migration mới vào `drizzle/`. Khi deploy, control plane tự áp SQL nà
 
 ## Nguồn mã
 
-Repository riêng tư: <https://github.com/2ez4gcx/RoomManager>. Giữ ở chế độ private cho tới khi rà soát xong, vì lịch sử commit có chứa mật khẩu của tài khoản dữ liệu mẫu (`db/seed.ts`) và toàn bộ logic nghiệp vụ.
+Repository riêng tư: <https://github.com/2ez4gcx/RoomManager>. Giữ ở chế độ private cho tới khi rà soát xong, vì lịch sử commit có chứa mật khẩu của tài khoản dữ liệu mẫu và toàn bộ logic nghiệp vụ.
+
+Tài khoản `test`/`test` đã bị xoá khỏi mã nguồn. Chỉ còn `quanly@hoangan.vn`/`roommanager` trong `db/seed.ts` — dữ liệu mẫu phải giữ lại vì bộ kiểm thử tự động dựng trên nó, nhưng nó không bao giờ được nạp vào cơ sở dữ liệu thật.
 
 Trước khi chuyển sang public hoặc đưa lên môi trường thật:
 
-- Tạo tài khoản chủ nhà riêng và **xoá hai tài khoản mẫu** trong `db/seed.ts`: `test`/`test` và `quanly@hoangan.vn`/`roommanager`.
+- Khởi tạo cơ sở dữ liệu thật bằng đường **trống** (xem mục "Dùng thật"), không chạy `db:setup`.
+- Kiểm tra tài khoản mẫu không đăng nhập được trên môi trường thật.
 - Rà lại `.env` chưa từng bị commit (đang nằm trong `.gitignore`).
 - Đảm bảo `ALLOW_DEV_SETUP` không được đặt trên môi trường thật — biến này mở route xóa sạch cơ sở dữ liệu.
+- Mật khẩu `roommanager` vẫn nằm trong lịch sử commit. Nếu muốn public thì đổi mật khẩu dữ liệu mẫu là chưa đủ — phải viết lại lịch sử, hoặc chấp nhận rằng nó chỉ mở được cơ sở dữ liệu mẫu của người tự chạy máy họ.

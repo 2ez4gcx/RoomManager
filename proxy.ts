@@ -23,6 +23,10 @@ const PUBLIC_PREFIXES = [
   // Phải mở ở đây vì cần chạy khi chưa có tài khoản nào. Route tự khóa bằng
   // `import.meta.env.DEV` và `ALLOW_DEV_SETUP`, xem app/api/dev/setup/route.ts.
   "/api/dev/setup",
+  // Tạo tài khoản chủ nhà đầu tiên: theo định nghĩa là lúc chưa ai đăng nhập
+  // được. Route dùng chung cổng khóa với /api/dev/setup và còn từ chối thêm
+  // khi cơ sở dữ liệu đã có tài khoản.
+  "/api/dev/create-owner",
   "/api/dev/verify-hash",
   "/api/dev/totp",
   "/_next",

@@ -66,8 +66,12 @@ start "RoomManager - mo trinh duyet" /min "%~f0" --open
 rem --- Chay server o cua so nay -------------------------------------------
 echo  [3/3] Dang khoi dong server...
 echo.
-echo  Dang nhap nhanh:  test / test
-echo  Hoac tai khoan day du:  quanly@hoangan.vn / roommanager
+if exist ".du-lieu-that" (
+  echo  Che do DUNG THAT: dang nhap bang tai khoan cua ban.
+) else (
+  echo  Du lieu mau. Dang nhap:  quanly@hoangan.vn / roommanager
+  echo  Muon nhap du lieu that thi chay khoi-tao-that.bat
+)
 echo  Dong cua so nay hoac nhan Ctrl+C de dung server.
 echo.
 call npm run dev
@@ -96,7 +100,13 @@ if errorlevel 1 (
 )
 
 rem Dung bang va nap du lieu mau. Neu da co du lieu, route nay tu bo qua.
-curl -s -X POST http://localhost:3000/api/dev/setup >nul 2>&1
+rem File .du-lieu-that danh dau may nay dang chua du lieu that: khong duoc
+rem nap du lieu mau vao, ke ca khi co so du lieu dang trong.
+if exist ".du-lieu-that" (
+  curl -s -X POST "http://localhost:3000/api/dev/setup?migrate=true" >nul 2>&1
+) else (
+  curl -s -X POST http://localhost:3000/api/dev/setup >nul 2>&1
+)
 
 start "" http://localhost:3000/login
 exit /b 0

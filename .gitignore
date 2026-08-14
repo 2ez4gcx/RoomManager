@@ -45,3 +45,6 @@ yarn-error.log*
 /.wrangler/
 /outputs/
 /work/
+
+# Danh dau co so du lieu tren may nay dang chua du lieu that
+.du-lieu-that

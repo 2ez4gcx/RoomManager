@@ -93,7 +93,8 @@ npx wrangler d1 execute DB --remote --config dist/server/wrangler.json \
   --command "SELECT count(*) AS so_bang FROM sqlite_master WHERE type='table'"
 ```
 
-Phải ra **21 bảng** nghiệp vụ (cộng vài bảng nội bộ của D1).
+Phải ra **21 bảng** nghiệp vụ (cộng vài bảng nội bộ của D1). Cơ sở dữ liệu lúc
+này trống hoàn toàn — không có nhà, phòng hay tài khoản nào.
 
 ## 5. Tạo tài khoản chủ nhà đầu tiên
 
@@ -105,8 +106,13 @@ khoản đầu tiên phải tạo trực tiếp:
 npm run create-owner -- "chunha@nhatro.vn" "Trần Văn A" "mat khau that cua ban" "0901234567"
 ```
 
-Script in ra một lệnh `wrangler d1 execute` đã ghép sẵn. Chép và chạy lệnh đó,
-thay `<TEN_DATABASE>` bằng `room-manager`.
+Script in ra hai lệnh `wrangler d1 execute` đã ghép sẵn — một cho Cloudflare,
+một cho cơ sở dữ liệu local. Lấy lệnh dưới mục **"Trên Cloudflare"**, thay
+`<TEN_DATABASE>` bằng `room-manager`, rồi chạy.
+
+Dữ liệu mẫu không bao giờ được nạp lên đây. `npm run db:setup` và
+`reset-data.bat` chỉ chạy được với server dev ở máy, và tài khoản mẫu
+`quanly@hoangan.vn` chỉ tồn tại trong cơ sở dữ liệu mẫu đó.
 
 Sau khi đăng nhập lần đầu:
 

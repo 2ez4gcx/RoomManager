@@ -83,7 +83,12 @@ export type CreateUserInput = {
   phone?: string | null;
   password: string;
   role: UserRole;
-  actorId: string;
+  /**
+   * Ai tạo. `null` cho tài khoản chủ nhà đầu tiên: lúc đó chưa có ai để ghi
+   * vào nhật ký, và cột `audit_logs.actor_id` có khóa ngoại sang `users` nên
+   * không thể nhét một chuỗi bịa vào.
+   */
+  actorId: string | null;
 };
 
 export async function createUser(input: CreateUserInput) {

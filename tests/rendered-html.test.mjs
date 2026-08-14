@@ -147,16 +147,25 @@ test("cookie phiên là HttpOnly và SameSite", async () => {
 });
 
 test("đăng nhập được bằng tên đăng nhập ngắn, không bắt buộc là email", async () => {
-  // Phụ thuộc tài khoản chạy thử trong db/seed.ts. Khi xóa tài khoản đó trước
-  // lúc đưa lên môi trường thật thì xóa luôn bài kiểm thử này.
+  // Tự tạo tài khoản thay vì dựa vào dữ liệu mẫu: bài kiểm thử này nói về khả
+  // năng đăng nhập bằng tên ngắn, không nên vỡ khi dữ liệu mẫu đổi.
+  const created = await json("/api/users", {
+    email: "thukho",
+    fullName: "Nguyễn Thủ Kho",
+    password: "thukho12345",
+    role: "staff",
+  });
+  assert.equal(created.status, 201);
+
   const response = await anonymous("/api/auth/login", {
     method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email: "TEST", password: "test" }),
+    headers: { "content-type": "application/json", "cf-connecting-ip": "192.0.2.90" },
+    // Gõ hoa: hệ thống phải chuẩn hóa về chữ thường.
+    body: JSON.stringify({ email: "THUKHO", password: "thukho12345" }),
   });
 
   assert.equal(response.status, 200, "chữ hoa/thường phải được chuẩn hóa");
-  assert.equal((await response.json()).user.role, "owner");
+  assert.equal((await response.json()).user.role, "staff");
 });
 
 test("route dựng dữ liệu bị khóa khi không khai báo ALLOW_DEV_SETUP", async () => {
@@ -171,6 +180,108 @@ test("route dựng dữ liệu bị khóa khi không khai báo ALLOW_DEV_SETUP",
   } finally {
     await locked.dispose();
   }
+});
+
+test("khởi tạo trống dựng đủ bảng nhưng không có dữ liệu mẫu", async () => {
+  // Đường dành cho chủ nhà bắt đầu nhập dữ liệu thật. Dùng cơ sở dữ liệu riêng
+  // để không xóa mất dữ liệu mẫu của những bài kiểm thử khác.
+  const fresh = await makeWorker("room-manager-empty", { ALLOW_DEV_SETUP: "true" });
+  try {
+    const setup = await fresh.dispatchFetch("http://localhost/api/dev/setup?empty=true", {
+      method: "POST",
+    });
+    const payload = await setup.json();
+    assert.equal(setup.status, 200, JSON.stringify(payload));
+    assert.equal(payload.empty, true);
+    assert.equal(payload.seeded, false);
+
+    // Bảng phải có thật: trang công khai truy vấn phòng, kết xuất được nghĩa là
+    // schema đã dựng xong chứ không phải cơ sở dữ liệu rỗng không.
+    const booking = await fresh.dispatchFetch("http://localhost/booking");
+    assert.equal(booking.status, 200);
+
+    // Và không còn tài khoản mẫu nào để đăng nhập.
+    const login = await fresh.dispatchFetch("http://localhost/api/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json", "cf-connecting-ip": "192.0.2.120" },
+      body: JSON.stringify({ email: OWNER_EMAIL, password: OWNER_PASSWORD }),
+    });
+    assert.equal(login.status, 401, "tài khoản dữ liệu mẫu không được tồn tại");
+  } finally {
+    await fresh.dispose();
+  }
+});
+
+test("tạo được tài khoản chủ nhà đầu tiên trên cơ sở dữ liệu trống", async () => {
+  const fresh = await makeWorker("room-manager-bootstrap", { ALLOW_DEV_SETUP: "true" });
+  const call = (pathname, init) => fresh.dispatchFetch(`http://localhost${pathname}`, init);
+  const owner = {
+    email: "chunha@nhatro.vn",
+    fullName: "Trần Văn A",
+    password: "matkhauthat2026",
+    phone: "0901234567",
+  };
+  const post = (pathname, body) =>
+    call(pathname, {
+      method: "POST",
+      headers: { "content-type": "application/json", "cf-connecting-ip": "192.0.2.130" },
+      body: JSON.stringify(body),
+    });
+
+  try {
+    await call("/api/dev/setup?empty=true", { method: "POST" });
+
+    const created = await post("/api/dev/create-owner", owner);
+    const payload = await created.json();
+    assert.equal(created.status, 201, JSON.stringify(payload));
+    assert.equal(payload.user.role, "owner");
+
+    const login = await post("/api/auth/login", {
+      email: owner.email,
+      password: owner.password,
+    });
+    assert.equal(login.status, 200, "tài khoản vừa tạo phải đăng nhập được");
+
+    // Đã có người đăng nhập được thì route bootstrap phải đóng lại: tạo tài
+    // khoản tiếp theo bắt buộc đi qua trang Tài khoản, nơi có kiểm tra quyền.
+    const second = await post("/api/dev/create-owner", {
+      ...owner,
+      email: "kekhac@nhatro.vn",
+    });
+    assert.equal(second.status, 409);
+  } finally {
+    await fresh.dispose();
+  }
+});
+
+test("route tạo chủ nhà cũng bị khóa khi không khai báo ALLOW_DEV_SETUP", async () => {
+  const locked = await makeWorker("room-manager-locked");
+  try {
+    const response = await locked.dispatchFetch("http://localhost/api/dev/create-owner", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email: "ke@xau.vn", fullName: "Kẻ Xấu", password: "12345678" }),
+    });
+    assert.equal(response.status, 403);
+  } finally {
+    await locked.dispose();
+  }
+});
+
+test("chế độ chỉ áp migration không đụng tới dữ liệu đang có", async () => {
+  // `start.bat` gọi chế độ này mỗi lần khởi động khi máy đang chứa dữ liệu
+  // thật. Nếu nó lỡ xóa dữ liệu thì mất trắng, nên phải khóa bằng kiểm thử.
+  const before = await authed("/api/rooms");
+  const { rooms: roomsBefore } = await before.json();
+
+  const response = await anonymous("/api/dev/setup?migrate=true", { method: "POST" });
+  const payload = await response.json();
+  assert.equal(response.status, 200, JSON.stringify(payload));
+  assert.equal(payload.seeded, false);
+
+  assert.ok(roomsBefore.length > 0, "bài kiểm thử này cần dữ liệu để so sánh");
+  const after = await authed("/api/rooms");
+  assert.equal((await after.json()).rooms.length, roomsBefore.length, "dữ liệu bị xóa mất");
 });
 
 /* ------------------------------------------------------------------ */

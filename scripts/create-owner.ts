@@ -5,6 +5,9 @@
  * mà route nạp dữ liệu mẫu thì bị khóa ngoài môi trường phát triển — cố ý,
  * vì nó xóa sạch dữ liệu.
  *
+ * Chỉ dành cho D1 trên Cloudflare (`--remote`). Bản chạy ở máy có đường riêng
+ * là `POST /api/dev/create-owner`, xem `khoi-tao-that.bat`.
+ *
  * Dùng chung `db/password-hash.ts` với máy chủ nên định dạng băm chắc chắn
  * khớp; có bài kiểm thử đối chiếu giữa Node và workerd.
  *
@@ -52,10 +55,16 @@ const sql = [
   ");",
 ].join(" ");
 
+const escaped = sql.replaceAll('"', '\\"');
+
 console.log("");
-console.log("Chạy lệnh sau để tạo tài khoản chủ nhà đầu tiên:");
+console.log("Chạy lệnh sau để tạo tài khoản trên cơ sở dữ liệu thật ở Cloudflare:");
 console.log("");
-console.log(`  npx wrangler d1 execute <TEN_DATABASE> --remote --command "${sql.replaceAll('"', '\\"')}"`);
+console.log(`  npx wrangler d1 execute <TEN_DATABASE> --remote --command "${escaped}"`);
+console.log("");
+console.log("Muốn tạo tài khoản cho bản chạy ở máy thì đừng dùng lệnh trên với --local:");
+console.log("wrangler mở một file SQLite khác với file mà npm run dev đang dùng.");
+console.log("Chạy khoi-tao-that.bat, hoặc gọi POST /api/dev/create-owner.");
 console.log("");
 console.log(`Đăng nhập:  ${login}  /  (mật khẩu vừa nhập)`);
 console.log("");

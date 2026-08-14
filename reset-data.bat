@@ -11,7 +11,10 @@ echo.
 echo  Thao tac nay XOA SACH du lieu trong co so du lieu local
 echo  roi nap lai bo mau: 2 nha, 40 phong, 32 hop dong, 32 don thu.
 echo.
-echo  Chi anh huong may nay, khong dong den du lieu tren may khac.
+echo  *** CANH BAO ***
+echo  Neu ban dang dung that, lenh nay se XOA HET du lieu that
+echo  va thay bang du lieu mau. Khong the hoan tac.
+echo  Muon khoi tao trong de nhap du lieu that thi dung khoi-tao-that.bat.
 echo.
 
 curl -s -o nul --max-time 3 http://localhost:3000/login
@@ -34,6 +37,7 @@ if /i not "%CONFIRM%"=="xoa" (
 echo.
 echo  Dang nap lai...
 curl -s -X POST "http://localhost:3000/api/dev/setup?reset=true"
+if exist ".du-lieu-that" del ".du-lieu-that"
 echo.
 echo.
 echo  Xong. Tai lai trang trong trinh duyet de thay du lieu moi.

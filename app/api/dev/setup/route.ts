@@ -5,38 +5,42 @@
  * lúc deploy và dữ liệu là dữ liệu thật của chủ nhà, nên route này tự khóa lại
  * trừ khi được bật rõ ràng bằng biến môi trường `ALLOW_DEV_SETUP`.
  */
-import { env } from "cloudflare:workers";
 import { getDb } from "../../../../db";
 import { applyMigrations } from "../../../../db/migrate";
 import { clearAll, isSeeded, seed } from "../../../../db/seed";
-
-/**
- * Mặc định ĐÓNG. Route này xóa và ghi đè dữ liệu nên không được mở theo kiểu
- * "khác production thì cho chạy": bản build production có `vars` rỗng, biến
- * NODE_ENV không tồn tại, và cách kiểm tra đó sẽ mở route ra Internet.
- *
- * `import.meta.env.DEV` được thay bằng hằng số lúc build nên bản production
- * không thể bật lại; ngoài dev phải khai báo `ALLOW_DEV_SETUP=true` một cách
- * cố ý.
- */
-function isEnabled() {
-  const runtimeEnv = env as unknown as Record<string, string | undefined>;
-  return import.meta.env.DEV || runtimeEnv.ALLOW_DEV_SETUP === "true";
-}
+import { devSetupLocked, isDevSetupEnabled } from "../../../lib/dev-setup";
 
 export async function POST(request: Request) {
-  if (!isEnabled()) {
-    return Response.json(
-      { error: "Route này bị khóa ngoài môi trường phát triển." },
-      { status: 403 },
-    );
-  }
+  if (!isDevSetupEnabled()) return devSetupLocked();
 
-  const reset = new URL(request.url).searchParams.get("reset") === "true";
+  const params = new URL(request.url).searchParams;
+  const reset = params.get("reset") === "true";
+  // Khởi tạo trống: dựng bảng, xóa sạch, KHÔNG nạp dữ liệu mẫu. Dùng khi bắt
+  // đầu nhập dữ liệu thật của nhà trọ.
+  const empty = params.get("empty") === "true";
+  // Chỉ áp migration, không đụng tới một dòng dữ liệu nào. `start.bat` gọi chế
+  // độ này mỗi lần khởi động khi máy đang chứa dữ liệu thật.
+  const migrateOnly = params.get("migrate") === "true";
 
   try {
     const db = getDb();
     const migration = await applyMigrations(db);
+
+    if (migrateOnly) {
+      return Response.json({ ok: true, migration, seeded: false });
+    }
+
+    if (empty) {
+      await clearAll(db);
+      return Response.json({
+        ok: true,
+        migration,
+        seeded: false,
+        empty: true,
+        message:
+          "Đã dựng bảng và xóa sạch dữ liệu. Tạo tài khoản chủ nhà bằng npm run create-owner.",
+      });
+    }
 
     if (reset) await clearAll(db);
     if (!reset && (await isSeeded(db))) {
