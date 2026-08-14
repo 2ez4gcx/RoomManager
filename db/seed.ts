@@ -41,6 +41,16 @@ type Db = ReturnType<typeof getDb>;
 export const OWNER_EMAIL = "quanly@hoangan.vn";
 export const OWNER_PASSWORD = "roommanager";
 
+/**
+ * Tài khoản gõ nhanh khi chạy thử tại máy. Vai trò chủ nhà để thử được cả
+ * những thao tác chỉ chủ nhà mới làm được (thêm nhà, đổi bảng giá).
+ *
+ * Mật khẩu cực yếu và nằm công khai trong mã nguồn. Phải xóa tài khoản này
+ * trước khi đưa hệ thống lên Internet — xem mục "Nguồn mã" trong README.
+ */
+export const TEST_LOGIN = "test";
+export const TEST_PASSWORD = "test";
+
 /** D1 giới hạn số tham số ràng buộc mỗi câu lệnh, nên phải chèn theo lô nhỏ. */
 const MAX_BOUND_PARAMS = 90;
 
@@ -149,6 +159,14 @@ export async function seed(db: Db) {
     phone: "0901234567",
     role: "owner",
     passwordHash: await hashPassword(OWNER_PASSWORD),
+  });
+
+  await db.insert(users).values({
+    id: newId("usr"),
+    email: TEST_LOGIN,
+    fullName: "Tài khoản thử",
+    role: "owner",
+    passwordHash: await hashPassword(TEST_PASSWORD),
   });
 
   /* --- Nhà và loại phòng ------------------------------------------ */

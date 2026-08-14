@@ -47,8 +47,9 @@ export function LoginClient() {
 
         <form onSubmit={submit}>
           <label>
-            Email
-            <input name="email" type="email" required autoComplete="username" placeholder="quanly@hoangan.vn" />
+            Email hoặc tên đăng nhập
+            {/* Cố ý không dùng type="email": tài khoản có thể là tên đăng nhập ngắn. */}
+            <input name="email" type="text" required autoComplete="username" placeholder="quanly@hoangan.vn" />
           </label>
           <label>
             Mật khẩu

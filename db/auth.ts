@@ -125,12 +125,19 @@ export async function destroySession(token: string | undefined) {
   await db.delete(sessions).where(eq(sessions.id, await hashToken(token)));
 }
 
-export async function findUserByEmail(email: string) {
+/**
+ * Tra tài khoản theo định danh đăng nhập.
+ *
+ * Cột `users.email` chứa email với tài khoản thật, nhưng cũng nhận tên đăng
+ * nhập ngắn (ví dụ tài khoản chạy thử). Chuẩn hóa về chữ thường để người dùng
+ * gõ hoa/thường kiểu gì cũng vào được.
+ */
+export async function findUserByLogin(login: string) {
   const db = getDb();
   const [user] = await db
     .select()
     .from(users)
-    .where(eq(users.email, email.trim().toLowerCase()))
+    .where(eq(users.email, login.trim().toLowerCase()))
     .limit(1);
   return user ?? null;
 }

@@ -30,6 +30,14 @@ Các ràng buộc nghiệp vụ đang được kiểm thử tự động: không
 
 Yêu cầu Node.js `>=22.13.0`.
 
+### Cách nhanh (Windows)
+
+Nhấp đúp `start.bat`. File này tự kiểm tra Node.js, cài thư viện lần đầu, khởi động server, dựng bảng và nạp dữ liệu mẫu nếu cơ sở dữ liệu còn trống, rồi mở trình duyệt. Đóng cửa sổ đen để dừng server.
+
+Muốn xoá sạch và nạp lại dữ liệu mẫu: nhấp đúp `reset-data.bat` (phải chạy `start.bat` trước, và gõ `xoa` để xác nhận).
+
+### Cách thủ công
+
 ```bash
 npm install
 npm run dev
@@ -41,12 +49,14 @@ Lần đầu chạy, dựng bảng và nạp dữ liệu mẫu (2 nhà, 40 phòn
 npm run db:setup
 ```
 
-Mở `http://localhost:3000` và đăng nhập:
+Mở `http://localhost:3000` và đăng nhập bằng một trong hai tài khoản mẫu:
 
-- Email: `quanly@hoangan.vn`
-- Mật khẩu: `roommanager`
+| Đăng nhập | Mật khẩu | Vai trò |
+|---|---|---|
+| `test` | `test` | Chủ nhà — gõ nhanh khi chạy thử |
+| `quanly@hoangan.vn` | `roommanager` | Chủ nhà |
 
-Đây là tài khoản của **dữ liệu mẫu**, mật khẩu nằm công khai trong `db/seed.ts`. Phải tạo tài khoản thật và đổi mật khẩu trước khi đưa lên Internet.
+Cả hai đều là tài khoản của **dữ liệu mẫu**, mật khẩu nằm công khai trong `db/seed.ts` và bị xoá/tạo lại mỗi lần chạy `reset-data.bat`. Phải xoá chúng và tạo tài khoản thật trước khi đưa lên Internet.
 
 Xóa sạch và nạp lại từ đầu:
 
@@ -100,6 +110,6 @@ Repository riêng tư: <https://github.com/2ez4gcx/RoomManager>. Giữ ở chế
 
 Trước khi chuyển sang public hoặc đưa lên môi trường thật:
 
-- Tạo tài khoản chủ nhà riêng và bỏ tài khoản mẫu; đổi mật khẩu mặc định `roommanager`.
+- Tạo tài khoản chủ nhà riêng và **xoá hai tài khoản mẫu** trong `db/seed.ts`: `test`/`test` và `quanly@hoangan.vn`/`roommanager`.
 - Rà lại `.env` chưa từng bị commit (đang nằm trong `.gitignore`).
 - Đảm bảo `ALLOW_DEV_SETUP` không được đặt trên môi trường thật — biến này mở route xóa sạch cơ sở dữ liệu.

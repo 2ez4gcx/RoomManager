@@ -141,6 +141,19 @@ test("cookie phiên là HttpOnly và SameSite", async () => {
   assert.match(cookie, /SameSite=Lax/i);
 });
 
+test("đăng nhập được bằng tên đăng nhập ngắn, không bắt buộc là email", async () => {
+  // Phụ thuộc tài khoản chạy thử trong db/seed.ts. Khi xóa tài khoản đó trước
+  // lúc đưa lên môi trường thật thì xóa luôn bài kiểm thử này.
+  const response = await anonymous("/api/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: "TEST", password: "test" }),
+  });
+
+  assert.equal(response.status, 200, "chữ hoa/thường phải được chuẩn hóa");
+  assert.equal((await response.json()).user.role, "owner");
+});
+
 test("route dựng dữ liệu bị khóa khi không khai báo ALLOW_DEV_SETUP", async () => {
   // Bản build production không có biến này; route phải từ chối để không ai
   // xóa được cơ sở dữ liệu thật qua Internet.

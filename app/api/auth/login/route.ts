@@ -1,6 +1,6 @@
 import {
   createSession,
-  findUserByEmail,
+  findUserByLogin,
   SESSION_COOKIE,
   SESSION_TTL_MS,
   verifyPassword,
@@ -22,7 +22,7 @@ export async function POST(request: Request) {
       return Response.json({ error: INVALID }, { status: 400 });
     }
 
-    const user = await findUserByEmail(email);
+    const user = await findUserByLogin(email);
     const ok = await verifyPassword(password, user?.passwordHash ?? null);
     if (!user || !user.isActive || !ok) {
       return Response.json({ error: INVALID }, { status: 401 });
