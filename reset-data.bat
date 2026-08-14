@@ -25,6 +25,9 @@ if errorlevel 1 (
   exit /b 1
 )
 
+rem Xoa truoc khi hoi: set /p khong doc duoc thi bien phai rong,
+rem de cau so sanh ben duoi roi vao nhanh huy chu khong phai nhanh xoa sach du lieu.
+set "CONFIRM="
 set /p CONFIRM="  Go 'xoa' roi Enter de xac nhan: "
 if /i not "%CONFIRM%"=="xoa" (
   echo.

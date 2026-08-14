@@ -27,9 +27,6 @@ if errorlevel 1 (
   exit /b 1
 )
 
-for /f "delims=" %%d in ('powershell -NoProfile -Command "Get-Date -Format yyyy-MM-dd"') do set "TODAY=%%d"
-set "OUT=RoomManager-!TODAY!.zip"
-
 git status --porcelain > "%TEMP%\rm-dirty.txt"
 for %%f in ("%TEMP%\rm-dirty.txt") do set DIRTY=%%~zf
 del "%TEMP%\rm-dirty.txt" >nul 2>&1
@@ -37,6 +34,9 @@ if not "!DIRTY!"=="0" (
   echo  [CANH BAO] Dang co thay doi chua commit.
   echo  Goi chi chua nhung gi da commit, phan sua moi se KHONG co trong goi.
   echo.
+  rem Xoa truoc khi hoi: set /p khong doc duoc thi bien phai rong,
+  rem de cau so sanh ben duoi roi vao nhanh huy chu khong phai nhanh dong goi.
+  set "GOON="
   set /p GOON="  Van dong goi? Go c roi Enter: "
   if /i not "!GOON!"=="c" (
     echo  Da huy.
@@ -45,6 +45,11 @@ if not "!DIRTY!"=="0" (
   )
   echo.
 )
+
+rem Lay ngay sau phan hoi xac nhan: powershell.exe ke thua stdin, chay truoc
+rem thi no nuot mat dong tra loi khi script duoc goi kem file dau vao.
+for /f "delims=" %%d in ('powershell -NoProfile -Command "Get-Date -Format yyyy-MM-dd"') do set "TODAY=%%d"
+set "OUT=RoomManager-!TODAY!.zip"
 
 echo  Dang tao !OUT! ...
 git archive --format=zip HEAD -o "!OUT!"
