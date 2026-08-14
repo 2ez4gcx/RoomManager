@@ -72,7 +72,9 @@ export function TenantsClient({
           title="Danh sách khách thuê"
           description="Hồ sơ, hợp đồng và công nợ của người đang thuê phòng."
         >
-          <button className="secondary-button" type="button"><Download size={15} /> Xuất danh sách</button>
+          <a className="secondary-button" href="/api/export/tenants" download>
+            <Download size={15} /> Xuất danh sách
+          </a>
         </PageHeader>
 
         <section className="summary-cards three">

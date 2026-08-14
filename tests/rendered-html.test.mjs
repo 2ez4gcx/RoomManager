@@ -12,6 +12,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Miniflare } from "miniflare";
 import jsQR from "jsqr";
+// Mở lại file Excel do mã tự viết sinh ra, bằng thư viện khác.
+import * as XLSX from "xlsx";
 // Import thẳng module máy chủ dùng: kiểm chéo băm giữa Node và workerd.
 import { hashPassword } from "../db/password-hash.ts";
 
@@ -1748,6 +1750,169 @@ test("hủy đơn yêu cầu đăng nhập", async () => {
     body: JSON.stringify({ invoiceId: "abc", reason: "thử" }),
   });
   assert.equal(response.status, 401);
+});
+
+/* ------------------------------------------------------------------ */
+/* Xuất Excel                                                         */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Tải file rồi mở lại bằng SheetJS — thư viện khác với mã tự viết đã sinh ra
+ * nó. Chỉ kiểm tra vài byte đầu thì không chứng minh được Excel mở lên đọc ra
+ * đúng dữ liệu.
+ */
+async function downloadWorkbook(pathname) {
+  const response = await authed(pathname);
+  assert.equal(response.status, 200, `tải ${pathname} thất bại`);
+  assert.match(
+    response.headers.get("content-type") ?? "",
+    /spreadsheetml\.sheet/,
+    "sai kiểu nội dung, trình duyệt sẽ không tải về",
+  );
+  assert.match(
+    response.headers.get("content-disposition") ?? "",
+    /attachment; filename=".+\.xlsx"/,
+    "thiếu tên file đính kèm",
+  );
+
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  // "PK" — chữ ký của kho ZIP, mà xlsx chính là ZIP.
+  assert.equal(bytes[0], 0x50);
+  assert.equal(bytes[1], 0x4b);
+
+  return XLSX.read(bytes, { type: "array" });
+}
+
+/** Đọc một sheet thành mảng hai chiều, giữ nguyên ô trống. */
+function sheetRows(workbook, index = 0) {
+  const sheet = workbook.Sheets[workbook.SheetNames[index]];
+  return XLSX.utils.sheet_to_json(sheet, { header: 1, defval: null, raw: true });
+}
+
+test("xuất danh sách khách thuê ra file Excel mở được", async () => {
+  const workbook = await downloadWorkbook("/api/export/tenants");
+  assert.deepEqual(workbook.SheetNames, ["Khách thuê"]);
+
+  const rows = sheetRows(workbook);
+  assert.deepEqual(rows[0], [
+    "Mã khách",
+    "Họ và tên",
+    "Số điện thoại",
+    "Phòng",
+    "Nhà",
+    "Từ ngày",
+    "Đến ngày",
+    "Tiền thuê",
+    "Công nợ",
+    "Trạng thái",
+  ]);
+
+  const { tenants } = await (await authed("/api/tenants")).json();
+  assert.equal(rows.length - 1, tenants.length, "số dòng không khớp danh sách thật");
+
+  const first = tenants[0];
+  const row = rows.find((item) => item[0] === first.code);
+  assert.ok(row, `không thấy dòng của ${first.code}`);
+  assert.equal(row[1], first.fullName, "tên tiếng Việt bị hỏng khi xuất");
+
+  // Số điện thoại phải là chuỗi, nếu để số Excel sẽ cắt mất số 0 đứng đầu.
+  assert.equal(typeof row[2], "string");
+  assert.match(row[2], /^0\d+$/);
+
+  // Tiền phải là số để cộng được trong Excel, không phải chuỗi đã định dạng.
+  assert.equal(typeof row[7], "number");
+  assert.equal(row[7], first.rent);
+  assert.equal(row[8], first.debt);
+});
+
+test("xuất đơn thu tách đúng từng khoản tiền", async () => {
+  const period = new Date().toISOString().slice(0, 7);
+  const workbook = await downloadWorkbook(`/api/export/invoices?period=${period}`);
+
+  const rows = sheetRows(workbook);
+  const { invoices } = await (await authed(`/api/invoices?period=${period}`)).json();
+  assert.equal(rows.length - 1, invoices.length);
+
+  const target = invoices.find((invoice) => invoice.status !== "cancelled");
+  const row = rows.find((item) => item[0] === target.code);
+  assert.ok(row, `không thấy đơn ${target.code}`);
+
+  const amountOf = (kind) =>
+    target.items.filter((item) => item.kind === kind).reduce((sum, item) => sum + item.amount, 0);
+
+  assert.equal(row[6], amountOf("rent"), "tiền phòng sai");
+  assert.equal(row[7], amountOf("electricity"), "tiền điện sai");
+  assert.equal(row[8], amountOf("water"), "tiền nước sai");
+  assert.equal(row[9], amountOf("service"), "phí dịch vụ sai");
+  assert.equal(row[10], target.total);
+
+  // Các khoản cộng lại phải bằng tổng đơn, nếu không là xuất thiếu dòng nào đó.
+  assert.equal(row[6] + row[7] + row[8] + row[9], row[10]);
+});
+
+test("xuất thu chi có sheet cơ cấu chi và dòng tổng", async () => {
+  const period = new Date().toISOString().slice(0, 7);
+  const workbook = await downloadWorkbook(`/api/export/cashflow?period=${period}`);
+
+  assert.equal(workbook.SheetNames.length, 2);
+  assert.match(workbook.SheetNames[0], /Thu chi/);
+  assert.equal(workbook.SheetNames[1], "Cơ cấu chi");
+
+  const rows = sheetRows(workbook);
+  const totalRow = rows.find((row) => row[3] === "TỔNG");
+  assert.ok(totalRow, "thiếu dòng tổng");
+
+  // Dòng tổng phải khớp tổng các giao dịch trong kỳ, không phải số bịa.
+  const body = rows.slice(1).filter((row) => row[0] && String(row[0]).startsWith("GD-"));
+  const income = body.reduce((sum, row) => sum + (row[6] ?? 0), 0);
+  const expense = body.reduce((sum, row) => sum + (row[7] ?? 0), 0);
+  assert.equal(totalRow[6], income, "tổng thu không khớp các dòng");
+  assert.equal(totalRow[7], expense, "tổng chi không khớp các dòng");
+
+  const netRow = rows.find((row) => row[3] === "DÒNG TIỀN THUẦN");
+  assert.equal(netRow[6], income - expense);
+
+  const breakdown = sheetRows(workbook, 1);
+  assert.deepEqual(breakdown[0], ["Nhóm chi", "Số tiền", "Tỷ trọng"]);
+  assert.ok(breakdown.length > 1, "sheet cơ cấu chi trống");
+});
+
+test("mọi ô tiền trong file xuất đều là số, cộng được trong Excel", async () => {
+  const period = new Date().toISOString().slice(0, 7);
+  const workbook = await downloadWorkbook(`/api/export/invoices?period=${period}`);
+  const rows = sheetRows(workbook);
+
+  for (const row of rows.slice(1)) {
+    for (const column of [6, 7, 8, 9, 10, 11, 12]) {
+      assert.equal(
+        typeof row[column],
+        "number",
+        `cột ${column} của đơn ${row[0]} không phải số`,
+      );
+    }
+  }
+});
+
+test("tên file tải về đọc được, bản xuất theo kỳ không lặp hai ngày", async () => {
+  const period = new Date().toISOString().slice(0, 7);
+  const nameOf = async (pathname) =>
+    (await authed(pathname)).headers.get("content-disposition")?.match(/filename="(.+)"/)?.[1];
+
+  assert.equal(await nameOf(`/api/export/invoices?period=${period}`), `don-thu-${period}.xlsx`);
+  assert.equal(await nameOf(`/api/export/cashflow?period=${period}`), `thu-chi-${period}.xlsx`);
+
+  // Bản chụp danh sách thì gắn ngày để phân biệt các lần xuất.
+  assert.match(await nameOf("/api/export/tenants"), /^khach-thue-\d{4}-\d{2}-\d{2}\.xlsx$/);
+});
+
+test("xuất Excel yêu cầu đăng nhập", async () => {
+  for (const pathname of [
+    "/api/export/tenants",
+    "/api/export/invoices",
+    "/api/export/cashflow",
+  ]) {
+    assert.equal((await anonymous(pathname)).status, 401, pathname);
+  }
 });
 
 /* ------------------------------------------------------------------ */

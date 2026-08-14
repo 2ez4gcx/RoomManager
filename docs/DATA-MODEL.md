@@ -189,6 +189,23 @@ Bước "đúng mật khẩu nhưng chưa nhập mã" **không** bị tính vào
 nhập sai; nếu tính thì người bật 2FA sẽ hết lượt chỉ sau vài lần đăng nhập bình
 thường. Nhập sai mã thì có tính.
 
+## Xuất Excel
+
+File `.xlsx` được sinh trực tiếp trong `db/xlsx.ts` và `db/zip.ts`, không dùng
+thư viện ngoài: định dạng này chỉ là một kho ZIP chứa vài file XML, còn thư
+viện đọc/ghi Excel phổ biến nặng gần một megabyte — đủ để chạm giới hạn kích
+thước bundle của Cloudflare Workers.
+
+ZIP ghi ở chế độ không nén cho gọn mã. Bảng vài trăm dòng vẫn chỉ vài chục KB.
+
+Tiền được ghi là **số** kèm định dạng `#,##0`, không phải chuỗi đã định dạng
+sẵn — có vậy mới cộng được trong Excel. Số điện thoại thì ngược lại, phải là
+chuỗi, nếu không Excel cắt mất số 0 đứng đầu.
+
+Bài kiểm thử mở lại file bằng SheetJS (thư viện khác với mã đã sinh ra nó) và
+đối chiếu từng ô với dữ liệu gốc — kiểm tra vài byte đầu không chứng minh được
+Excel mở lên đọc ra đúng thứ.
+
 ## Cách giữ schema chuyển được sang PostgreSQL
 
 Nền tảng lâu dài chưa chốt, nên schema tránh mọi thứ chỉ SQLite mới có:

@@ -72,7 +72,13 @@ export function InvoicesClient({
             <a className="secondary-button" href={`/lap-don-thu?period=${summary.period}`}>
               <FilePlus2 size={15} /> Lập đơn kỳ này
             </a>
-            <button className="secondary-button" type="button"><Download size={15} /> Xuất Excel</button>
+            <a
+              className="secondary-button"
+              href={`/api/export/invoices?period=${summary.period}`}
+              download
+            >
+              <Download size={15} /> Xuất Excel
+            </a>
           </div>
         </PageHeader>
 

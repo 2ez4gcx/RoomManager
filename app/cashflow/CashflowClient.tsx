@@ -80,7 +80,9 @@ export function CashflowClient({
               </select>
               <ChevronDown size={14} />
             </label>
-            <button className="secondary-button" type="button"><Download size={15} /> Xuất báo cáo</button>
+            <a className="secondary-button" href={`/api/export/cashflow?period=${period}`} download>
+              <Download size={15} /> Xuất báo cáo
+            </a>
           </div>
         </PageHeader>
 
