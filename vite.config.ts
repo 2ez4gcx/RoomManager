@@ -6,6 +6,14 @@ import { sites } from "./build/sites-vite-plugin";
 const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
   "00000000-0000-4000-8000-000000000000";
 
+// Khi deploy lên tài khoản Cloudflare của chính mình, đặt hai biến này để bản
+// build trỏ vào D1 thật. Không đặt thì giữ giá trị giả và `npm run dev` chạy
+// với D1 cục bộ của Miniflare như thường.
+// Xem docs/DEPLOY-CLOUDFLARE.md.
+const d1DatabaseName = process.env.CF_D1_DATABASE_NAME ?? "site-creator-d1";
+const d1DatabaseId =
+  process.env.CF_D1_DATABASE_ID ?? SITE_CREATOR_PLACEHOLDER_DATABASE_ID;
+
 const { d1, r2 } = hostingConfig;
 
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
@@ -18,8 +26,11 @@ const localBindingConfig = {
     ? [
         {
           binding: d1,
-          database_name: "site-creator-d1",
-          database_id: SITE_CREATOR_PLACEHOLDER_DATABASE_ID,
+          database_name: d1DatabaseName,
+          database_id: d1DatabaseId,
+          // Để `wrangler d1 migrations apply` tìm được SQL do drizzle sinh ra.
+          // Đường dẫn tính từ file cấu hình trong dist/server.
+          migrations_dir: "../../drizzle",
         },
       ]
     : [],

@@ -15,7 +15,10 @@
     "db:generate": "drizzle-kit generate",
     "db:setup": "curl -X POST http://localhost:3000/api/dev/setup",
     "db:reset": "curl -X POST \"http://localhost:3000/api/dev/setup?reset=true\"",
-    "hash-password": "node scripts/hash-password.ts"
+    "hash-password": "node scripts/hash-password.ts",
+    "create-owner": "node scripts/create-owner.ts",
+    "deploy:migrate": "wrangler d1 migrations apply DB --remote --config dist/server/wrangler.json",
+    "deploy": "wrangler deploy"
   },
   "dependencies": {
     "cross-env": "^10.1.0",

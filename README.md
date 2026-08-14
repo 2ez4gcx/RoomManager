@@ -27,7 +27,7 @@ Các ràng buộc nghiệp vụ đang được kiểm thử tự động: không
 - Nút "Gửi nhắc" mới là giao diện, chưa hoạt động.
 - Chưa nhắc nợ tự động; cần dịch vụ gửi tin (Zalo OA hoặc email), hiện chưa cấu hình.
 - Chưa chốt nền tảng lâu dài: đang chạy Cloudflare D1, phương án VPS/PostgreSQL vẫn để ngỏ.
-- Chưa cấu hình tên miền hay môi trường chạy thật; mới chạy ở máy local.
+- Chưa cấu hình tên miền hay môi trường chạy thật; mới chạy ở máy local. Hướng dẫn đưa lên Cloudflare có ở [docs/DEPLOY-CLOUDFLARE.md](docs/DEPLOY-CLOUDFLARE.md).
 
 ## Chạy tại máy
 
@@ -133,7 +133,8 @@ Sinh migration mới vào `drizzle/`. Khi deploy, control plane tự áp SQL nà
 
 - [Định hướng sản phẩm](docs/PRODUCT-SCOPE.md)
 - [Mô hình dữ liệu](docs/DATA-MODEL.md)
-- [Hướng dẫn triển khai VPS](docs/DEPLOYMENT.md) — kế hoạch cho phương án PostgreSQL, chưa áp dụng
+- [Đưa lên Cloudflare](docs/DEPLOY-CLOUDFLARE.md) — hướng dẫn cho nền tảng đang dùng
+- [Triển khai trên VPS](docs/DEPLOYMENT.md) — kế hoạch cho phương án PostgreSQL, chưa áp dụng
 - [Thông tin ảnh chia sẻ](docs/BRAND-ASSET.md)
 
 ## Nguồn mã

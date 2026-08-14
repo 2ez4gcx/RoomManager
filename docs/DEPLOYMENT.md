@@ -1,9 +1,12 @@
 # Hướng dẫn triển khai trên VPS
 
 > **Lưu ý:** mã nguồn hiện chạy trên Cloudflare Workers + D1, không phải VPS +
-> PostgreSQL. Tài liệu này là kế hoạch cho phương án VPS nếu chủ dự án chọn
-> hướng đó; chưa thực hiện trên server và chưa thay đổi DNS. Chuyển hướng sẽ phải
-> gỡ `@cloudflare/vite-plugin`, đổi dialect Drizzle sang postgres và thay
+> PostgreSQL. Hướng dẫn cho nền tảng đang dùng nằm ở
+> [DEPLOY-CLOUDFLARE.md](DEPLOY-CLOUDFLARE.md).
+>
+> Tài liệu này là kế hoạch cho phương án VPS nếu chủ dự án chọn hướng đó; chưa
+> thực hiện trên server và chưa thay đổi DNS. Chuyển hướng sẽ phải gỡ
+> `@cloudflare/vite-plugin`, đổi dialect Drizzle sang postgres và thay
 > `db/index.ts`.
 
 ## Kiến trúc khuyến nghị
