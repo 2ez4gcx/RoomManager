@@ -58,7 +58,9 @@ set "OWNER_PASS="
 set "OWNER_PHONE="
 set /p OWNER_EMAIL="  Email hoac ten dang nhap: "
 set /p OWNER_NAME="  Ho ten: "
-set /p OWNER_PASS="  Mat khau (it nhat 8 ky tu): "
+echo   Mat khau: it nhat 8 ky tu, chi dung chu khong dau va so.
+echo   Tranh dau nhay " va dau \ - hai ky tu nay lam hong buoc gui du lieu.
+set /p OWNER_PASS="  Mat khau: "
 set /p OWNER_PHONE="  So dien thoai (bo trong cung duoc): "
 
 echo.

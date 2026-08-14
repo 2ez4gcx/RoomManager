@@ -48,3 +48,6 @@ yarn-error.log*
 
 # Danh dau co so du lieu tren may nay dang chua du lieu that
 .du-lieu-that
+
+# Goi ban giao do dong-goi.bat sinh ra
+RoomManager-*.zip

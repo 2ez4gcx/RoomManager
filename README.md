@@ -101,7 +101,7 @@ Route `/api/dev/setup` mặc định bị khóa ngoài môi trường dev; bản
 npm test
 ```
 
-Chạy typecheck, build, rồi kiểm thử bản build trong Miniflare (workerd thật kèm D1 thật): 127 bài, gồm xác thực, quyền truy cập, ràng buộc nghiệp vụ và kiểm tra trang công khai không lộ dữ liệu khách thuê.
+Chạy typecheck, build, rồi kiểm thử bản build trong Miniflare (workerd thật kèm D1 thật): 131 bài, gồm xác thực, quyền truy cập, ràng buộc nghiệp vụ và kiểm tra trang công khai không lộ dữ liệu khách thuê.
 
 ```bash
 npm run lint
@@ -140,7 +140,7 @@ Sinh migration mới vào `drizzle/`. Khi deploy, control plane tự áp SQL nà
 | Thư mục | Vai trò |
 |---|---|
 | `app/` | Trang (server component) + client component tương ứng, API route trong `app/api/` |
-| `db/schema.ts` | 21 bảng Drizzle |
+| `db/schema.ts` | 22 bảng Drizzle |
 | `db/queries.ts`, `db/queries-extra.ts` | Truy vấn đọc, gồm cả suy ra trạng thái phòng |
 | `db/mutations.ts`, `db/bookings.ts`, `db/finance.ts`, `db/settings.ts` | Thao tác ghi kèm kiểm tra dữ liệu |
 | `db/auth.ts` | Băm mật khẩu, đổi mật khẩu và quản lý phiên |

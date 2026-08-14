@@ -91,6 +91,11 @@ Về mật khẩu: đặt ít nhất 8 ký tự, **đừng dùng lại mật kh�
 hàng**. Phần mềm này giữ thông tin khách thuê và công nợ, nên nó đáng được một
 mật khẩu riêng.
 
+Ở bước này chỉ dùng **chữ không dấu và số**. Mật khẩu đi qua cửa sổ dòng lệnh
+nên chữ có dấu có thể bị đổi mà không báo lỗi — gõ xong lại không đăng nhập
+được, không hiểu vì sao. Đăng nhập xong muốn đổi sang mật khẩu phức tạp hơn thì
+vào trang *Cài đặt*, ở đó gõ gì cũng được.
+
 Xong là xong. Đăng nhập bằng tài khoản vừa tạo, phần mềm trống trơn, bắt đầu
 nhập từ **Nhà & phòng**.
 
@@ -226,6 +231,12 @@ sàng.
 
 **Đăng nhập báo sai mật khẩu dù chắc chắn gõ đúng**
 Có thể đang bị tạm khoá do nhập sai 5 lần trong 15 phút. Chờ hết 15 phút.
+
+**Vừa chạy `khoi-tao-that.bat` xong mà không đăng nhập được**
+Nhiều khả năng mật khẩu có chữ có dấu hoặc ký tự lạ, bị đổi lúc gửi đi. Lúc này
+bạn **chưa nhập dữ liệu gì**, nên cứ chạy lại `khoi-tao-that.bat` từ đầu và đặt
+mật khẩu chỉ gồm chữ không dấu và số. (Lời dặn "đừng chạy lại" ở mục A4 chỉ áp
+dụng sau khi bạn đã nhập số liệu thật.)
 
 **Chạy nhầm `reset-data.bat`, mất dữ liệu thật**
 Kiểu "một máy tính": phục hồi từ bản sao lưu thư mục `.wrangler` (mục A5). Không

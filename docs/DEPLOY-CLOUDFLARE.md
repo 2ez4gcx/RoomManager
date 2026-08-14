@@ -93,7 +93,7 @@ npx wrangler d1 execute DB --remote --config dist/server/wrangler.json \
   --command "SELECT count(*) AS so_bang FROM sqlite_master WHERE type='table'"
 ```
 
-Phải ra **21 bảng** nghiệp vụ (cộng vài bảng nội bộ của D1). Cơ sở dữ liệu lúc
+Phải ra **22 bảng** nghiệp vụ (cộng vài bảng nội bộ của D1). Cơ sở dữ liệu lúc
 này trống hoàn toàn — không có nhà, phòng hay tài khoản nào.
 
 ## 5. Tạo tài khoản chủ nhà đầu tiên
