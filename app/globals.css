@@ -328,3 +328,14 @@ input:disabled, select:disabled { background: #f4f2ec; color: #8b938f; cursor: n
 
 /* Link đặt lại mật khẩu */
 .reset-link-box { margin: 12px 0; padding: 12px; border-radius: 9px; background: #f4f2ec; border: 1px dashed var(--line); font-family: ui-monospace, monospace; font-size: 10px; line-height: 1.65; word-break: break-all; user-select: all; }
+
+/* Màn hình lập đơn thu */
+.billing-table td input { width: 84px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 7px; font-size: 11px; background: var(--paper); }
+.billing-table td input:disabled { background: #f4f2ec; color: #a3aaa6; }
+.billing-table td input.input-invalid { border-color: #c2543c; background: #fdecec; }
+.billing-table tr.row-issued { opacity: .55; }
+.billing-table td { white-space: nowrap; }
+.billing-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 16px; flex-wrap: wrap; }
+.billing-actions .modal-hint { margin: 0; flex: 1; min-width: 260px; }
+.billing-actions .primary-button[disabled] { opacity: .5; cursor: not-allowed; }
+.security-callout.callout-ok a { margin-left: auto; color: var(--forest); font-weight: 700; font-size: 11px; text-decoration: underline; white-space: nowrap; }

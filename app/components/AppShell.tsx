@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  ArrowRight, BedDouble, Building2, CalendarDays, CreditCard, FileText,
+  ArrowRight, BedDouble, Building2, CalendarDays, CreditCard, FilePlus2, FileText,
   LayoutDashboard, LogOut, Menu, Plus, Search, Settings, UserCog, Users, X,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
@@ -15,6 +15,7 @@ const navItems: Array<{ label: string; icon: typeof LayoutDashboard; href: strin
   { label: "Nhà & phòng", icon: Building2, href: "/rooms" },
   { label: "Khách thuê", icon: Users, href: "/tenants" },
   { label: "Đặt phòng", icon: CalendarDays, href: "/bookings" },
+  { label: "Lập đơn thu", icon: FilePlus2, href: "/lap-don-thu" },
   { label: "Đơn & doanh thu", icon: FileText, href: "/invoices" },
   { label: "Thu chi", icon: CreditCard, href: "/cashflow" },
 ];

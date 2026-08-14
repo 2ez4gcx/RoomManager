@@ -9,6 +9,7 @@ import { sql } from "drizzle-orm";
 import { hashPassword } from "./auth";
 import type { getDb } from "./index";
 import { newId } from "./ids";
+import { insertChunked } from "./internal";
 import {
   auditLogs,
   bookingRequests,
@@ -51,21 +52,6 @@ export const OWNER_PASSWORD = "roommanager";
  */
 export const TEST_LOGIN = "test";
 export const TEST_PASSWORD = "test";
-
-/** D1 giới hạn số tham số ràng buộc mỗi câu lệnh, nên phải chèn theo lô nhỏ. */
-const MAX_BOUND_PARAMS = 90;
-
-async function insertChunked<TRow extends Record<string, unknown>>(
-  rows: TRow[],
-  run: (chunk: TRow[]) => Promise<unknown>,
-) {
-  if (rows.length === 0) return;
-  const columns = Object.keys(rows[0]).length || 1;
-  const perChunk = Math.max(1, Math.floor(MAX_BOUND_PARAMS / columns));
-  for (let index = 0; index < rows.length; index += perChunk) {
-    await run(rows.slice(index, index + perChunk));
-  }
-}
 
 function isoDate(date: Date) {
   return date.toISOString().slice(0, 10);
@@ -179,7 +165,7 @@ export async function seed(db: Db) {
     address: template.address,
     sortOrder: index,
   }));
-  await insertChunked(propertyRows, (chunk) => db.insert(properties).values(chunk));
+  await insertChunked(properties, propertyRows, (chunk) => db.insert(properties).values(chunk));
 
   const roomTypeRows = propertyRows.flatMap((property) =>
     ROOM_TYPE_TEMPLATES.map((template) => ({
@@ -193,7 +179,7 @@ export async function seed(db: Db) {
       description: `${template.name} tại ${property.name}`,
     })),
   );
-  await insertChunked(roomTypeRows, (chunk) => db.insert(roomTypes).values(chunk));
+  await insertChunked(roomTypes, roomTypeRows, (chunk) => db.insert(roomTypes).values(chunk));
 
   /* --- Phòng ------------------------------------------------------- */
   const roomRows = Array.from({ length: 40 }, (_, index) => {
@@ -220,7 +206,7 @@ export async function seed(db: Db) {
       note: MAINTENANCE_ROOMS.has(index) ? "Đang sửa đường nước, dự kiến xong cuối tháng." : "",
     };
   });
-  await insertChunked(roomRows, (chunk) => db.insert(rooms).values(chunk));
+  await insertChunked(rooms, roomRows, (chunk) => db.insert(rooms).values(chunk));
 
   /* --- Khách thuê và hợp đồng -------------------------------------- */
   const occupiedIndexes = roomRows
@@ -241,7 +227,7 @@ export async function seed(db: Db) {
     permanentAddress: "",
     note: "",
   }));
-  await insertChunked(guestRows, (chunk) => db.insert(guests).values(chunk));
+  await insertChunked(guests, guestRows, (chunk) => db.insert(guests).values(chunk));
 
   const contractRows = occupiedIndexes.map((roomIndex, order) => {
     const room = roomRows[roomIndex];
@@ -262,9 +248,10 @@ export async function seed(db: Db) {
       createdBy: ownerId,
     };
   });
-  await insertChunked(contractRows, (chunk) => db.insert(contracts).values(chunk));
+  await insertChunked(contracts, contractRows, (chunk) => db.insert(contracts).values(chunk));
 
   await insertChunked(
+    contractGuests,
     contractRows.map((contract, order) => ({
       id: newId("cgu"),
       contractId: contract.id,
@@ -297,6 +284,7 @@ export async function seed(db: Db) {
     };
   });
   await insertChunked(
+    meterReadings,
     meterRows.map(({ _used, _order, ...row }) => {
       void _used;
       void _order;
@@ -404,6 +392,7 @@ export async function seed(db: Db) {
   });
 
   await insertChunked(
+    invoices,
     invoiceRows.map(({ _guestId, _items, ...row }) => {
       void _guestId;
       void _items;
@@ -412,6 +401,7 @@ export async function seed(db: Db) {
     (chunk) => db.insert(invoices).values(chunk),
   );
   await insertChunked(
+    invoiceItems,
     invoiceRows.flatMap((invoice) => invoice._items),
     (chunk) => db.insert(invoiceItems).values(chunk),
   );
@@ -429,9 +419,10 @@ export async function seed(db: Db) {
     note: `Thu tiền kỳ ${invoice.period}`,
     recordedBy: ownerId,
   }));
-  await insertChunked(paymentRows, (chunk) => db.insert(payments).values(chunk));
+  await insertChunked(payments, paymentRows, (chunk) => db.insert(payments).values(chunk));
 
   await insertChunked(
+    paymentAllocations,
     paidInvoices.map((invoice, order) => ({
       id: newId("pal"),
       paymentId: paymentRows[order].id,
@@ -475,7 +466,7 @@ export async function seed(db: Db) {
     paymentId: null,
     recordedBy: ownerId,
   }));
-  await insertChunked([...incomeEntries, ...expenseEntries], (chunk) =>
+  await insertChunked(ledgerEntries, [...incomeEntries, ...expenseEntries], (chunk) =>
     db.insert(ledgerEntries).values(chunk),
   );
 
@@ -521,10 +512,11 @@ export async function seed(db: Db) {
       internalNote: "",
     };
   });
-  await insertChunked(bookingRows, (chunk) => db.insert(bookingRequests).values(chunk));
+  await insertChunked(bookingRequests, bookingRows, (chunk) => db.insert(bookingRequests).values(chunk));
 
   /* --- Bảo trì ------------------------------------------------------- */
   await insertChunked(
+    maintenanceRequests,
     [...MAINTENANCE_ROOMS].map((roomIndex) => ({
       id: newId("mnt"),
       roomId: roomRows[roomIndex].id,
@@ -541,6 +533,7 @@ export async function seed(db: Db) {
 
   /* --- Cấu hình ------------------------------------------------------ */
   await insertChunked(
+    settings,
     [
       { key: "org.name", value: "Hệ thống nhà trọ Hoàng An" },
       { key: "org.phone", value: "0901234567" },

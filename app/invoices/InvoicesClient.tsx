@@ -68,7 +68,12 @@ export function InvoicesClient({
           title="Đơn thu & doanh thu"
           description="Theo dõi khoản phải thu, đã thu và công nợ theo từng kỳ."
         >
-          <button className="secondary-button" type="button"><Download size={15} /> Xuất Excel</button>
+          <div className="heading-actions">
+            <a className="secondary-button" href={`/lap-don-thu?period=${summary.period}`}>
+              <FilePlus2 size={15} /> Lập đơn kỳ này
+            </a>
+            <button className="secondary-button" type="button"><Download size={15} /> Xuất Excel</button>
+          </div>
         </PageHeader>
 
         <section className="summary-cards four">

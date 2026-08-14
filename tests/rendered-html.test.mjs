@@ -1039,6 +1039,254 @@ test("chuỗi băm do script cứu hộ sinh ở Node được worker chấp nh�
 });
 
 /* ------------------------------------------------------------------ */
+/* Lập đơn thu theo kỳ                                                */
+/* ------------------------------------------------------------------ */
+
+/** Kỳ kế tiếp: dữ liệu mẫu đã lập đơn cho kỳ hiện tại rồi. */
+function nextPeriod(offset = 1) {
+  const now = new Date();
+  const date = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + offset, 1));
+  return date.toISOString().slice(0, 7);
+}
+
+function lastDayOf(period) {
+  const [year, month] = period.split("-").map(Number);
+  return new Date(Date.UTC(year, month, 0)).getUTCDate();
+}
+
+async function preview(period) {
+  const response = await authed(`/api/billing?period=${period}`);
+  assert.equal(response.status, 200);
+  return response.json();
+}
+
+test("xem trước liệt kê mọi hợp đồng còn hiệu lực kèm chỉ số điện kỳ trước", async () => {
+  const period = nextPeriod();
+  const data = await preview(period);
+
+  assert.equal(data.period, period);
+  assert.equal(data.rows.length, 32, "phải có đủ 32 hợp đồng đang thuê");
+  assert.equal(data.alreadyIssued, 0, "kỳ sau chưa lập đơn nào");
+
+  // Chỉ số cũ phải lấy từ lần chốt gần nhất, không phải 0.
+  const withReading = data.rows.filter((row) => row.previousReading > 0);
+  assert.equal(withReading.length, 32, "thiếu chỉ số điện kỳ trước");
+
+  for (const row of data.rows) {
+    assert.ok(row.rent > 0);
+    assert.ok(row.occupants >= 1);
+    assert.match(row.dueDate, new RegExp(`^${period}-\\d{2}$`));
+    assert.equal(row.existingInvoiceCode, null);
+  }
+});
+
+test("kỳ hiện tại báo đã lập đơn rồi, không lập lại", async () => {
+  const data = await preview(new Date().toISOString().slice(0, 7));
+  assert.equal(data.alreadyIssued, 32);
+  assert.ok(data.rows.every((row) => row.existingInvoiceCode));
+});
+
+test("phát hành đơn tính đúng tiền điện, nước, dịch vụ và tiền phòng", async () => {
+  const period = nextPeriod();
+  const before = await preview(period);
+  const target = before.rows[0];
+  const used = 120;
+
+  const issued = await json("/api/billing", {
+    period,
+    entries: [
+      {
+        contractId: target.contractId,
+        currentReading: target.previousReading + used,
+        occupants: 2,
+      },
+    ],
+  });
+  assert.equal(issued.status, 201);
+  assert.deepEqual(await issued.json(), { created: 1, skipped: 0, total: 1 });
+
+  const { invoices } = await (await authed(`/api/invoices?period=${period}`)).json();
+  const invoice = invoices.find((row) => row.roomCode === target.roomCode);
+  assert.ok(invoice, "không thấy đơn vừa lập");
+
+  const expected =
+    target.rent +
+    used * before.rates.electricity +
+    2 * before.rates.water +
+    before.rates.service;
+  assert.equal(invoice.total, expected, "tổng đơn không khớp");
+  assert.equal(invoice.paidAmount, 0);
+  assert.equal(invoice.status, "issued");
+
+  // Bốn dòng: tiền phòng, điện, nước, dịch vụ.
+  assert.equal(invoice.items.length, 4);
+  const electricity = invoice.items.find((item) => item.kind === "electricity");
+  assert.equal(electricity.quantity, used);
+  assert.equal(electricity.unitPrice, before.rates.electricity);
+  assert.equal(electricity.amount, used * before.rates.electricity);
+});
+
+test("chốt sổ lần nữa thì bỏ qua phòng đã có đơn, không tạo trùng", async () => {
+  const period = nextPeriod();
+  const data = await preview(period);
+  const issuedRow = data.rows.find((row) => row.existingInvoiceCode);
+  assert.ok(issuedRow, "tiền đề: phải có phòng đã lập đơn ở bài trước");
+
+  const again = await json("/api/billing", {
+    period,
+    entries: [{ contractId: issuedRow.contractId, currentReading: issuedRow.previousReading + 5 }],
+  });
+  assert.equal(again.status, 201);
+  assert.deepEqual(await again.json(), { created: 0, skipped: 1, total: 1 });
+
+  const { invoices } = await (await authed(`/api/invoices?period=${period}`)).json();
+  const forRoom = invoices.filter((row) => row.roomCode === issuedRow.roomCode);
+  assert.equal(forRoom.length, 1, "tạo trùng đơn cho cùng phòng và kỳ");
+});
+
+test("phát hành cả kỳ trong một lượt, đủ 32 đơn", async () => {
+  // Bài này chạy ở quy mô thật. Chèn nhiều dòng một lúc từng làm vỡ giới hạn
+  // tham số ràng buộc của D1, mà chèn lẻ vài dòng thì không lộ ra.
+  const period = nextPeriod(5);
+  const data = await preview(period);
+  assert.equal(data.alreadyIssued, 0);
+
+  const response = await json("/api/billing", {
+    period,
+    entries: data.rows.map((row, index) => ({
+      contractId: row.contractId,
+      currentReading: row.previousReading + 50 + index,
+      occupants: 2,
+    })),
+  });
+  assert.equal(response.status, 201);
+
+  const result = await response.json();
+  assert.equal(result.created, data.rows.length);
+  assert.equal(result.skipped, 0);
+
+  const { invoices, summary } = await (await authed(`/api/invoices?period=${period}`)).json();
+  assert.equal(invoices.length, data.rows.length);
+  assert.ok(summary.billed > 0);
+
+  // Mỗi đơn phải có đủ bốn dòng, không đơn nào bị chèn hụt.
+  for (const invoice of invoices) {
+    assert.equal(invoice.items.length, 4, `${invoice.code} thiếu dòng`);
+    assert.equal(
+      invoice.items.reduce((sum, item) => sum + item.amount, 0),
+      invoice.total,
+      `${invoice.code} tổng không khớp các dòng`,
+    );
+  }
+});
+
+test("từ chối chỉ số điện nhỏ hơn chỉ số cũ", async () => {
+  const period = nextPeriod();
+  const data = await preview(period);
+  const target = data.rows.find((row) => !row.existingInvoiceCode && row.previousReading > 10);
+
+  const response = await json("/api/billing", {
+    period,
+    entries: [{ contractId: target.contractId, currentReading: target.previousReading - 1 }],
+  });
+
+  // Công tơ không quay ngược; đây gần như chắc chắn là gõ nhầm.
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /không được nhỏ hơn chỉ số cũ/);
+});
+
+test("chỉ số kỳ này thành chỉ số cũ của kỳ sau", async () => {
+  const period = nextPeriod();
+  const after = nextPeriod(2);
+
+  const data = await preview(period);
+  const target = data.rows.find((row) => !row.existingInvoiceCode);
+  const newReading = target.previousReading + 77;
+
+  assert.equal(
+    (await json("/api/billing", {
+      period,
+      entries: [{ contractId: target.contractId, currentReading: newReading }],
+    })).status,
+    201,
+  );
+
+  const next = await preview(after);
+  const sameRoom = next.rows.find((row) => row.contractId === target.contractId);
+  assert.equal(sameRoom.previousReading, newReading, "chuỗi chỉ số bị đứt giữa hai kỳ");
+});
+
+test("hợp đồng bắt đầu giữa kỳ thì tiền phòng chia theo ngày", async () => {
+  const period = nextPeriod(3);
+  const days = lastDayOf(period);
+  const startDay = 15;
+
+  const { rooms } = await (await authed("/api/rooms")).json();
+  const vacant = rooms.find((room) => room.status === "Trống");
+  assert.ok(vacant, "cần một phòng trống để ký hợp đồng thử");
+
+  const created = await json("/api/tenants", {
+    fullName: "Khách Vào Giữa Tháng",
+    phone: "0903334445",
+    roomId: vacant.id,
+    startDate: `${period}-${startDay}`,
+  });
+  assert.equal(created.status, 201);
+
+  const data = await preview(period);
+  const row = data.rows.find((item) => item.roomCode === vacant.code);
+  assert.ok(row, "hợp đồng mới không xuất hiện trong kỳ");
+
+  // Ở từ ngày 15 tới hết tháng, làm tròn tới nghìn đồng.
+  const daysCharged = days - startDay + 1;
+  const expected = Math.round((vacant.price * daysCharged) / days / 1000) * 1000;
+  assert.equal(row.rent, expected, "tiền phòng không được chia theo ngày");
+  assert.match(row.rentNote, new RegExp(`${daysCharged}/${days} ngày`));
+
+  // Thu trọn tháng của người dọn vào giữa kỳ là thu sai.
+  assert.ok(row.rent < vacant.price);
+});
+
+test("hợp đồng bắt đầu sau kỳ thì không nằm trong kỳ đó", async () => {
+  const later = nextPeriod(3);
+  const earlier = nextPeriod(2);
+
+  const laterRows = (await preview(later)).rows.map((row) => row.roomCode);
+  const earlierRows = (await preview(earlier)).rows.map((row) => row.roomCode);
+
+  const newTenantRoom = laterRows.find((code) => !earlierRows.includes(code));
+  assert.ok(newTenantRoom, "hợp đồng ký cho kỳ sau lại xuất hiện ở kỳ trước");
+});
+
+test("từ chối kỳ thu sai định dạng", async () => {
+  for (const bad of ["2026-13", "202608", "thang-8"]) {
+    const response = await authed(`/api/billing?period=${encodeURIComponent(bad)}`);
+    assert.equal(response.status, 400, `kỳ "${bad}" phải bị từ chối`);
+  }
+});
+
+test("lập đơn thu yêu cầu đăng nhập", async () => {
+  assert.equal((await anonymous("/api/billing")).status, 401);
+  assert.equal(
+    (await anonymous("/api/billing", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ period: nextPeriod(), entries: [] }),
+    })).status,
+    401,
+  );
+});
+
+test("trang lập đơn thu kết xuất được", async () => {
+  const response = await authed(`/lap-don-thu?period=${nextPeriod(4)}`);
+  assert.equal(response.status, 200);
+
+  const html = await response.text();
+  assert.match(html, /Lập đơn thu/);
+  assert.match(html, /Chỉ số cũ/);
+});
+
+/* ------------------------------------------------------------------ */
 /* Kết xuất trang                                                     */
 /* ------------------------------------------------------------------ */
 

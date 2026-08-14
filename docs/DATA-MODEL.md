@@ -43,6 +43,23 @@ tờ nên chưa cần object storage.
 - `memberships` chưa cần: vai trò nằm thẳng ở `users.role` vì hệ thống chỉ phục
   vụ một chủ sở hữu. Thay vào đó có `sessions` cho đăng nhập.
 
+## Lập đơn thu theo kỳ
+
+Một kỳ là một tháng dương lịch (`YYYY-MM`). Ràng buộc UNIQUE trên
+`(contract_id, period)` là thứ đảm bảo không lập trùng: bấm lại lần hai chỉ bỏ
+qua chứ không tạo thêm đơn.
+
+Hợp đồng bắt đầu giữa kỳ thì tiền phòng **chia theo ngày**, làm tròn tới nghìn
+đồng — thu trọn tháng của người dọn vào ngày 28 là thu sai. Số ngày thực tế
+được ghi vào mô tả dòng tiền phòng để đối chiếu về sau.
+
+Chỉ số điện phải do người chốt sổ nhập tay, nên luồng gồm hai bước: xem trước
+rồi mới phát hành. Chỉ số cuối kỳ này thành chỉ số đầu kỳ sau. Không nhận chỉ
+số nhỏ hơn chỉ số cũ vì công tơ không quay ngược.
+
+`meter_readings.unit_price` lưu đơn giá tại thời điểm chốt, nên bảng giá đổi
+sau không làm đổi các đơn đã lập.
+
 ## Quy tắc về giữ chỗ
 
 Một phòng chỉ được giữ cho đúng một yêu cầu tại một thời điểm; xác nhận yêu cầu
