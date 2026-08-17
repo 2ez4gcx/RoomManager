@@ -109,6 +109,13 @@ Chạy typecheck, build, rồi kiểm thử bản build trong Miniflare (workerd
 npm run lint
 ```
 
+Mọi push và pull request vào `main` chạy lại đúng những lệnh này trên GitHub
+Actions, xem [.github/workflows/ci.yml](.github/workflows/ci.yml). Ngoài
+typecheck/build/lint/test, CI còn chặn hai thứ: cây phụ thuộc production có
+cảnh báo, và file cấu hình khai báo `ALLOW_DEV_SETUP` — biến mở đường xoá sạch
+cơ sở dữ liệu. Cây dev/build hiện còn 14 cảnh báo, được ghi ra nhưng không chặn
+vì không có đường chạm tới runtime.
+
 ## Quên mật khẩu
 
 Hệ thống **không gửi email**: Cloudflare Workers không mở được kết nối TCP nên không dùng SMTP trực tiếp, và chưa cấu hình dịch vụ gửi mail nào.

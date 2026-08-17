@@ -1,0 +1,102 @@
+# Cổng chất lượng cho mọi thay đổi vào main.
+#
+# Chạy đúng những lệnh đang chạy ở máy, không thêm bớt, để kết quả trên CI và
+# kết quả của người sửa mã không bao giờ lệch nhau.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Đẩy commit mới lên cùng một nhánh thì huỷ lượt chạy cũ, đỡ xếp hàng.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  kiem-tra:
+    name: Typecheck, build, lint, test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          # Khớp với "engines": { "node": ">=22.13.0" } trong package.json.
+          node-version: "22.13"
+          cache: npm
+
+      - name: Cài thư viện
+        # npm ci đọc package-lock.json và cài đúng phiên bản đã khoá, khác với
+        # npm install ở chỗ nó không tự sửa lock — CI phải chạy trên đúng cây
+        # phụ thuộc mà người sửa mã đã kiểm thử.
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck, build và 131 bài kiểm thử
+        # npm test đã gồm typecheck và build; chạy riêng từng bước sẽ build hai
+        # lần cho cùng một kết quả.
+        run: npm test
+
+  bao-mat:
+    name: Rà soát phụ thuộc
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22.13"
+          cache: npm
+
+      - run: npm ci
+
+      - name: Cây production phải sạch
+        # Đây là cây thật sự chạy trên Cloudflare. Có cảnh báo ở đây là chặn.
+        run: npm audit --omit=dev --audit-level=low
+
+      - name: Cây dev/build - chỉ báo, không chặn
+        # Toolchain phát triển còn 14 cảnh báo chưa gỡ được; xem lý do ở commit
+        # "Giảm cảnh báo dependency từ 21 xuống 14". Ghi ra để thấy khi nào con
+        # số đổi, nhưng không chặn merge vì chúng không chạm tới runtime.
+        run: npm audit || true
+
+  cau-hinh:
+    name: Cấu hình an toàn
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: ALLOW_DEV_SETUP không được khai báo trong mã
+        # Biến này mở route xoá sạch cơ sở dữ liệu. Route đã mặc định đóng,
+        # nhưng khai báo biến trong wrangler.jsonc hay vite.config.ts sẽ mở
+        # lại nó trên bản deploy thật.
+        run: |
+          if grep -rn 'ALLOW_DEV_SETUP' --include='*.jsonc' --include='*.json' \
+               --include='vite.config.ts' --include='*.yml' . \
+               | grep -v node_modules | grep -v '.github/workflows/ci.yml'; then
+            echo "::error::ALLOW_DEV_SETUP xuất hiện trong file cấu hình. Gỡ ra trước khi merge."
+            exit 1
+          fi
+          echo "Không thấy ALLOW_DEV_SETUP trong cấu hình."
+
+      - name: Gói bàn giao không được chứa dữ liệu
+        # git archive chỉ lấy file git theo dõi, nên chỉ cần bảo đảm không có
+        # file dữ liệu nào lọt vào danh sách theo dõi.
+        run: |
+          if git ls-files | grep -E '^\.wrangler/|^\.env$|^\.env\.|^node_modules/' \
+               | grep -v '^\.env\.example$'; then
+            echo "::error::Có file dữ liệu hoặc cấu hình riêng đang được git theo dõi."
+            exit 1
+          fi
+          echo "Không có file dữ liệu nào bị git theo dõi."
