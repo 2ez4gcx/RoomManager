@@ -137,6 +137,45 @@ async function kiemTraRouteDungDuLieu() {
   );
 }
 
+/**
+ * Tải thử mọi CSS/JS/font mà trang khai báo.
+ *
+ * Chỉ kiểm mã trạng thái của HTML là chưa đủ, và đây không phải lo xa: bản
+ * `chay-server.bat` đầu tiên trả 200 cho mọi trang trong khi 100% asset đều
+ * 404 — giao diện trần trụi, client không hydrate — mà lệnh này vẫn báo đủ
+ * mục đạt. Một cổng phát hành báo xanh sai còn tệ hơn không có cổng nào.
+ */
+async function kiemTraTaiNguyen(duongDanTrang) {
+  const { ok, res } = await goi(duongDanTrang);
+  if (!ok || res.status !== 200) return;
+
+  const html = await res.text();
+  const duongDan = [
+    ...new Set(
+      [...html.matchAll(/["'(](\/(?:_next|favicon|og)[^"')\s]*)/g)].map((m) => m[1]),
+    ),
+  ];
+
+  if (duongDan.length === 0) {
+    ghi(`Tài nguyên tĩnh của ${duongDanTrang}`, false, "trang không khai báo asset nào — bất thường");
+    return;
+  }
+
+  const hong = [];
+  for (const dd of duongDan) {
+    const { ok: được, res: r } = await goi(dd);
+    if (!được || r.status !== 200) hong.push(`${dd} (${được ? r.status : "không nối được"})`);
+  }
+
+  ghi(
+    `Tài nguyên tĩnh của ${duongDanTrang}`,
+    hong.length === 0,
+    hong.length === 0
+      ? `${duongDan.length}/${duongDan.length} tải được`
+      : `${hong.length}/${duongDan.length} hỏng: ${hong.slice(0, 2).join(", ")}`,
+  );
+}
+
 async function kiemTraTrangCongKhai() {
   const { ok, res } = await goi("/booking");
   if (!ok) return;
@@ -194,6 +233,8 @@ if (!kếtNối) {
 await kiemTraKhuQuanTri();
 await kiemTraRouteDungDuLieu();
 await kiemTraTrangCongKhai();
+await kiemTraTaiNguyen("/login");
+await kiemTraTaiNguyen("/booking");
 
 let hỏng = 0;
 let cảnhBáo = 0;
@@ -221,6 +262,6 @@ if (hỏng > 0) {
 console.log(`  Tất cả ${ketQua.length} mục đều đạt${cảnhBáo ? `, ${cảnhBáo} mục cần xem lại` : ""}.`);
 console.log("");
 console.log("  Còn hai việc phải làm bằng mắt, lệnh này không thay được:");
-console.log("    - Đăng nhập thử bằng tài khoản thật.");
+console.log("    - Đăng nhập thử bằng tài khoản thật, mở một biểu mẫu để chắc client chạy.");
 console.log("    - Mở /booking bằng cửa sổ ẩn danh, đọc xem có tên người thuê nào không.");
 console.log("");

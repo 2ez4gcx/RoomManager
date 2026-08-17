@@ -102,7 +102,7 @@ mật khẩu riêng.
 
 | Chạy bằng | Dữ liệu nằm ở | Nội dung |
 |---|---|---|
-| `start.bat` | `.wrangler\state3` | Chỉ dữ liệu mẫu. Xoá lúc nào cũng được. |
+| `start.bat` | `.wrangler\state\v3` | Chỉ dữ liệu mẫu. Xoá lúc nào cũng được. |
 | `chay-server.bat` | `.wrangler\state\server` | **Số liệu thật.** Đây là thư mục phải sao lưu. |
 
 Tách hẳn ra là cố ý: `reset-data.bat` chỉ đụng tới cơ sở dữ liệu mẫu, không có
@@ -173,8 +173,12 @@ chứa số liệu thật.
 Nếu không thấy thư mục `.wrangler`: mở File Explorer → thẻ *View* → tích
 *Hidden items*.
 
-Muốn phục hồi: dừng phần mềm, xoá thư mục `.wrangler` hiện có, chép bản sao lưu
-vào đúng chỗ cũ, chạy lại `start.bat`.
+Muốn phục hồi số liệu thật: dừng server (đóng cửa sổ `chay-server.bat`), xoá
+thư mục `.wrangler\\state\\server` hiện có, chép bản sao lưu vào đúng chỗ
+cũ, rồi chạy lại **`chay-server.bat`**.
+
+Đừng chạy `start.bat` để kiểm tra kết quả phục hồi — nó mở dữ liệu mẫu, bạn sẽ
+tưởng số liệu vẫn mất.
 
 Quy trình này đã được chạy thử thật: dừng phần mềm, chép `.wrangler` ra ngoài,
 xoá hẳn thư mục gốc, chép bản sao lưu về, khởi động lại — dữ liệu về đủ, đăng

@@ -38,8 +38,12 @@ Phải in ra `Gói sạch`.
 
 - [ ] `npm test` và `npm run lint` đều xanh trên commit sắp gói.
 - [ ] Gói được tạo bằng `git archive`, đã chạy lệnh kiểm tra ở trên.
-- [ ] Thử giải nén ra thư mục khác, chạy `start.bat`, đăng nhập bằng tài khoản
-      xem thử. Đây là bước duy nhất bắt được lỗi kiểu "thiếu file".
+- [ ] Thử giải nén ra thư mục khác rồi chạy **cả hai** đường:
+      - `start.bat`, đăng nhập bằng tài khoản xem thử.
+      - `khoi-tao-that.bat` rồi `chay-server.bat`, sau đó
+        `npm run kiem-tra-deploy -- http://localhost:3000` phải không còn mục
+        HỎNG. Bước này bắt được lỗi "thiếu file" lẫn lỗi asset 404 — bản giao
+        hàng từng trả 200 cho mọi trang trong khi toàn bộ CSS/JS đều 404.
 
 ## Gửi kèm gì
 
@@ -66,17 +70,21 @@ nhắc lại một câu.
 
 Khách sẽ hỏi nhiều nhất ba việc:
 
-**"Mở trên điện thoại thế nào?"** — Kiểu chạy trên một máy tính thì không mở
-được từ điện thoại. Muốn vậy phải đưa lên Cloudflare, xem
-[DEPLOY-CLOUDFLARE.md](DEPLOY-CLOUDFLARE.md). Nên hỏi rõ nhu cầu này ngay từ đầu
-để khách chọn đúng kiểu cài, khỏi nhập dữ liệu hai lần.
+**"Mở trên điện thoại thế nào?"** — Điện thoại **trong cùng wifi** thì được:
+chạy `chay-server.bat`, nó in ra địa chỉ dạng `http://192.168.x.x:3000`. Ra
+khỏi nhà là không vào được, và mạng nội bộ không có HTTPS nên mật khẩu đi qua
+wifi ở dạng chữ thường. Muốn dùng từ bất kỳ đâu và có HTTPS thì phải đưa lên
+Cloudflare, xem [DEPLOY-CLOUDFLARE.md](DEPLOY-CLOUDFLARE.md). Nên hỏi rõ nhu
+cầu này ngay từ đầu để khách chọn đúng kiểu cài, khỏi nhập dữ liệu hai lần.
 
 **"Quên mật khẩu rồi"** — Nếu còn một tài khoản chủ nhà đăng nhập được thì tự
 cấp link ở trang *Tài khoản*. Nếu mất hết thì cần `npm run hash-password` và sửa
 thẳng cơ sở dữ liệu.
 
 **"Mất dữ liệu rồi"** — Kiểu một máy tính: chỉ cứu được nếu họ có bản sao lưu
-thư mục `.wrangler`. Kiểu Cloudflare: Time Travel khôi phục được 30 ngày.
+thư mục `.wrangler\\state\\server` — đó là số liệu thật;
+`.wrangler\\state\\v3` chỉ là dữ liệu mẫu. Kiểu Cloudflare: Time Travel
+khôi phục được 30 ngày.
 
 ## Cập nhật phiên bản cho khách đã cài
 
@@ -84,8 +92,14 @@ Khách đã nhập dữ liệu thật thì **không được** bảo họ giải
 Cách an toàn:
 
 1. Giải nén bản mới ra thư mục khác.
-2. Chép thư mục `.wrangler` từ bản cũ sang bản mới.
-3. Chạy `start.bat` ở bản mới. Migration mới sẽ tự áp lên dữ liệu cũ.
+2. Chép thư mục `.wrangler\\state\\server` từ bản cũ sang bản mới — chỉ
+   thư mục đó, vì đó là số liệu thật.
+3. Chạy `chay-server.bat` ở bản mới. Migration mới tự áp lên dữ liệu cũ.
+4. Chạy `npm run kiem-tra-deploy -- http://localhost:3000`, phải không còn mục
+   HỎNG, rồi đăng nhập thử.
+
+Đừng dùng `start.bat` cho việc này: nó mở cơ sở dữ liệu mẫu, không phải số liệu
+thật của khách.
 
 Kiểu Cloudflare thì theo mục 10 của [DEPLOY-CLOUDFLARE.md](DEPLOY-CLOUDFLARE.md)
 — nhớ xuất bản sao lưu trước khi áp migration.

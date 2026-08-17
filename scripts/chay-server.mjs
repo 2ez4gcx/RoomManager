@@ -15,8 +15,10 @@
  *   node scripts/chay-server.mjs                 chạy server
  *   node scripts/chay-server.mjs --khoi-tao      xóa sạch và tạo chủ nhà đầu tiên
  *   node scripts/chay-server.mjs --cong 8080     đổi cổng
+ *   node scripts/chay-server.mjs --du-lieu <thư mục>   đổi nơi chứa dữ liệu
  */
-import { readdir, mkdir } from "node:fs/promises";
+import { createServer } from "node:http";
+import { readdir, mkdir, readFile, stat } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
 import { networkInterfaces } from "node:os";
 import path from "node:path";
@@ -25,6 +27,7 @@ import { Miniflare } from "miniflare";
 
 const goc = fileURLToPath(new URL("..", import.meta.url));
 const thuMucBuild = path.join(goc, "dist", "server");
+const thuMucClient = path.join(goc, "dist", "client");
 
 /**
  * Cơ sở dữ liệu của chế độ server nằm riêng, không dùng chung với
@@ -33,7 +36,7 @@ const thuMucBuild = path.join(goc, "dist", "server");
  *
  * ĐÂY LÀ THƯ MỤC CẦN SAO LƯU.
  */
-const thuMucDuLieu = path.join(goc, ".wrangler", "state", "server");
+const thuMucDuLieuMacDinh = path.join(goc, ".wrangler", "state", "server");
 
 const thamSo = process.argv.slice(2);
 const khoiTao = thamSo.includes("--khoi-tao");
@@ -43,6 +46,68 @@ const cong = Number(thamSo[thamSo.indexOf("--cong") + 1]) || 3000;
 function thamSoChuoi(ten) {
   const i = thamSo.indexOf(`--${ten}`);
   return i >= 0 ? thamSo[i + 1] : undefined;
+}
+
+/**
+ * `--du-lieu` cho phép trỏ sang thư mục khác. Bài kiểm thử dùng nó để có cơ sở
+ * dữ liệu dùng một lần rồi xóa — không có tham số này thì bài kiểm thử buộc
+ * phải xóa thư mục mặc định, tức là xóa số liệu thật của người dùng.
+ */
+const thuMucDuLieu = thamSoChuoi("du-lieu")
+  ? path.resolve(thamSoChuoi("du-lieu"))
+  : thuMucDuLieuMacDinh;
+
+const KIEU_NOI_DUNG = new Map([
+  [".css", "text/css; charset=utf-8"],
+  [".js", "text/javascript; charset=utf-8"],
+  [".mjs", "text/javascript; charset=utf-8"],
+  [".json", "application/json; charset=utf-8"],
+  [".map", "application/json; charset=utf-8"],
+  [".svg", "image/svg+xml"],
+  [".png", "image/png"],
+  [".jpg", "image/jpeg"],
+  [".jpeg", "image/jpeg"],
+  [".webp", "image/webp"],
+  [".ico", "image/x-icon"],
+  [".woff", "font/woff"],
+  [".woff2", "font/woff2"],
+  [".ttf", "font/ttf"],
+  [".txt", "text/plain; charset=utf-8"],
+]);
+
+/**
+ * Tìm tệp tĩnh trong `dist/client`, trả `null` nếu không có.
+ *
+ * Tầng này phải chạy TRƯỚC worker, giống hệt cách Cloudflare làm: Workers
+ * Assets chặn `/_next/*` trước khi worker được gọi. Đặt nó vào binding ASSETS
+ * là sai — đã thử và đo được: worker không hề gọi ASSETS cho `/_next/*`, nên
+ * mọi CSS/JS/font đều 404 trong khi HTML vẫn 200. Trang trả về "thành công"
+ * mà giao diện trần trụi, client không hydrate, nút bấm không chạy.
+ */
+async function timTepTinh(duongDanRaw) {
+  const duongDan = decodeURIComponent(duongDanRaw);
+
+  // Chặn traversal: ghép xong phải vẫn nằm trong dist/client.
+  const tep = path.resolve(thuMucClient, "." + duongDan);
+  if (tep !== thuMucClient && !tep.startsWith(thuMucClient + path.sep)) return null;
+
+  try {
+    const thongTin = await stat(tep);
+    if (!thongTin.isFile()) return null;
+
+    return {
+      noiDung: await readFile(tep),
+      kieu: KIEU_NOI_DUNG.get(path.extname(tep).toLowerCase()) ?? "application/octet-stream",
+      // Tệp trong /_next/static/ có mã băm trong tên nên đổi nội dung là đổi
+      // tên; cache vĩnh viễn được. Còn lại không cache, để sửa xong tải lại là
+      // thấy ngay.
+      cache: duongDan.startsWith("/_next/static/")
+        ? "public, max-age=31536000, immutable"
+        : "no-cache",
+    };
+  } catch {
+    return null;
+  }
 }
 
 /** Bản build dùng dynamic import nên phải liệt kê module thủ công. */
@@ -80,8 +145,9 @@ async function dựngWorker({ moCong }) {
     d1Databases: { DB: "room-manager" },
     d1Persist: thuMucDuLieu,
     bindings: moCong ? {} : { ALLOW_DEV_SETUP: "true" },
+    // Miniflare không tự mở cổng: cổng do máy chủ HTTP bên dưới giữ, để tệp
+    // tĩnh được phục vụ trước khi worker được gọi.
     serviceBindings: { ASSETS: () => new Response("Not found", { status: 404 }) },
-    ...(moCong ? { host: "0.0.0.0", port: cong } : {}),
   });
   await mf.ready;
   return mf;
@@ -165,6 +231,69 @@ if (khoiTao) {
   const mf = await dựngWorker({ moCong: true });
 
   /**
+   * Máy chủ HTTP đứng trước worker: tệp tĩnh trước, còn lại chuyển tiếp vào
+   * Miniflare. Cùng thứ tự mà Cloudflare dùng.
+   */
+  const mayChu = createServer(async (req, res) => {
+    try {
+      const duongDan = req.url.split("?")[0];
+      const tep = req.method === "GET" || req.method === "HEAD" ? await timTepTinh(duongDan) : null;
+
+      if (tep) {
+        res.writeHead(200, {
+          "content-type": tep.kieu,
+          "cache-control": tep.cache,
+          "content-length": tep.noiDung.length,
+        });
+        res.end(req.method === "HEAD" ? undefined : tep.noiDung);
+        return;
+      }
+
+      const than =
+        req.method === "GET" || req.method === "HEAD"
+          ? undefined
+          : Buffer.concat(await new Promise((ok, loi) => {
+              const cac = [];
+              req.on("data", (c) => cac.push(c));
+              req.on("end", () => ok(cac));
+              req.on("error", loi);
+            }));
+
+      const dau = new Headers();
+      for (const [k, v] of Object.entries(req.headers)) {
+        if (Array.isArray(v)) v.forEach((x) => dau.append(k, x));
+        else if (v !== undefined) dau.set(k, v);
+      }
+      // Giới hạn số lần đăng nhập sai đếm theo cf-connecting-ip. Không đặt thì
+      // mọi máy trong wifi dùng chung một bộ đếm: một người gõ sai 5 lần là
+      // khóa cả nhà. Ghi đè kể cả khi client tự gửi, vì header do client gửi
+      // thì client tự đổi được để lách.
+      const ip = (req.socket.remoteAddress ?? "127.0.0.1").replace(/^::ffff:/, "");
+      dau.set("cf-connecting-ip", ip);
+
+      const phanHoi = await mf.dispatchFetch(`http://${req.headers.host ?? "localhost"}${req.url}`, {
+        method: req.method,
+        headers: dau,
+        body: than,
+        redirect: "manual",
+      });
+
+      const dauRa = {};
+      for (const [k, v] of phanHoi.headers) {
+        if (k.toLowerCase() !== "set-cookie") dauRa[k] = v;
+      }
+      const cookie = phanHoi.headers.getSetCookie?.() ?? [];
+      res.writeHead(phanHoi.status, cookie.length ? { ...dauRa, "set-cookie": cookie } : dauRa);
+      res.end(Buffer.from(await phanHoi.arrayBuffer()));
+    } catch (loi) {
+      res.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
+      res.end(`Lỗi máy chủ: ${loi.message}`);
+    }
+  });
+
+  await new Promise((ok) => mayChu.listen(cong, "0.0.0.0", ok));
+
+  /**
    * Rà nhắc nợ mỗi ngày một lần.
    *
    * Bản deploy trên Cloudflare có Cron Trigger lo việc này (`triggers.crons`
@@ -231,6 +360,7 @@ if (khoiTao) {
     // Dọn hẹn giờ trước khi dispose: nó bắn đúng lúc đang tắt là gọi vào một
     // Miniflare đã đóng, ném lỗi không ai bắt.
     clearInterval(hẹnGiờ);
+    mayChu.close();
     await mf.dispose();
     process.exit(0);
   };

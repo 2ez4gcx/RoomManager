@@ -80,7 +80,7 @@ npm start                 # chạy server
 
 Trên Windows thì nhấp đúp `chay-server.bat` (tự build rồi chạy).
 
-Chạy bản build production trên Miniflare 4 — đúng runtime của 132 bài kiểm thử
+Chạy bản build production trên Miniflare 4 — đúng runtime của bộ kiểm thử
 — bind `0.0.0.0`, dữ liệu ở `.wrangler/state/server` tách khỏi cơ sở dữ liệu
 mẫu của `npm run dev`. Nhóm route `/api/dev/` bị khoá; chế độ `--khoi-tao` có
 mở nó nhưng khi ấy Miniflare không mở cổng mạng, mọi lời gọi đi qua
@@ -132,7 +132,7 @@ Route `/api/dev/setup` mặc định bị khóa ngoài môi trường dev; bản
 npm test
 ```
 
-Chạy typecheck, build, rồi kiểm thử bản build trong Miniflare (workerd thật kèm D1 thật): 132 bài, gồm xác thực, quyền truy cập, ràng buộc nghiệp vụ và kiểm tra trang công khai không lộ dữ liệu khách thuê.
+Chạy typecheck, build, rồi kiểm thử bản build trong Miniflare (workerd thật kèm D1 thật): 136 bài, gồm xác thực, quyền truy cập, ràng buộc nghiệp vụ và kiểm tra trang công khai không lộ dữ liệu khách thuê.
 
 ```bash
 npm run lint
