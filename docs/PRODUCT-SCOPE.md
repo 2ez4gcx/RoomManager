@@ -25,9 +25,27 @@ Trang công khai không được hiển thị tên khách thuê, số điện th
 - Dashboard công suất, doanh thu đã thu và công nợ.
 - Nhật ký ai đã sửa dữ liệu quan trọng.
 
+### Không làm
+
+**Phần mềm không đụng tới tiền thật.** Không cổng thanh toán, không chuyển
+khoản online, không kết nối ngân hàng. Nó là sổ theo dõi: người dùng nhập số
+liệu, phần mềm tính công nợ và trình bày cho dễ nhìn. Tiền vẫn chuyển qua kênh
+sẵn có của chủ nhà.
+
+Ràng buộc này đang đúng với mã nguồn: không có một lệnh gọi ra ngoài Internet
+nào trong `db/`, `app/api/` hay `worker/`. Giữ nguyên như vậy.
+
+Hệ quả cho việc đánh giá rủi ro: lỗi ở luồng ghi nhận thanh toán làm **sai số
+liệu**, không làm **mất tiền**. Vẫn phải sửa — con số đúng chính là sản phẩm —
+nhưng đừng xếp ngang hàng với sự cố của một hệ thống thanh toán.
+
 ### Để sau MVP
 
-- Thanh toán cọc online, hóa đơn điện tử, gửi Zalo/SMS tự động.
+- **Mã QR chuyển khoản** in trên đơn thu, để khách quét bằng app ngân hàng.
+  Sinh hoàn toàn ngoại tuyến từ số tài khoản của chủ nhà, không gọi API ngân
+  hàng nào, nên vẫn nằm trong ràng buộc "không đụng tới tiền thật".
+  `db/qr.ts` đã có sẵn và chạy được trong Workers.
+- Hóa đơn điện tử, gửi Zalo/SMS tự động.
 - Ứng dụng di động native; web responsive đã đủ cho giai đoạn đầu.
 - Kế toán kép, phân quyền phức tạp, AI định giá phòng.
 - Đồng bộ khóa cửa, công tơ IoT hoặc nhiều kênh đặt phòng.
