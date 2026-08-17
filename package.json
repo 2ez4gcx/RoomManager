@@ -18,7 +18,8 @@
     "hash-password": "node scripts/hash-password.ts",
     "create-owner": "node scripts/create-owner.ts",
     "deploy:migrate": "wrangler d1 migrations apply DB --remote --config dist/server/wrangler.json",
-    "deploy": "wrangler deploy"
+    "deploy": "wrangler deploy",
+    "kiem-tra-deploy": "node scripts/kiem-tra-sau-deploy.mjs"
   },
   "dependencies": {
     "cross-env": "^10.1.0",

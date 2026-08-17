@@ -135,7 +135,25 @@ Xong sẽ có địa chỉ dạng `https://room-manager.<tên-tài-khoản>.work
 
 ## 7. Kiểm tra ngay sau khi deploy
 
-Chạy đủ danh sách này trước khi giao cho ai dùng:
+Phần lớn danh sách này đã được viết thành lệnh chạy được:
+
+```bash
+npm run kiem-tra-deploy -- https://room-manager.<tên-tài-khoản>.workers.dev
+```
+
+Lệnh chỉ gửi GET, không ghi gì, không đăng nhập — chạy lại bao nhiêu lần cũng
+được. Nó kiểm: HTTPS, trang chủ đẩy người lạ về đăng nhập, bốn API quản trị trả
+401, nhóm route `/api/dev/` bị khóa, và trang `/booking` không lộ mã khách
+thuê, mã hợp đồng, chữ của khu quản trị hay số điện thoại lạ. Có mục nào hỏng
+thì lệnh thoát khác 0, dùng làm cổng chặn trong quy trình deploy được.
+
+Còn lại hai việc phải làm bằng mắt:
+
+- [ ] Đăng nhập bằng tài khoản vừa tạo.
+- [ ] Mở `/booking` bằng cửa sổ ẩn danh và **đọc** xem có tên người thuê nào
+      không — máy chỉ bắt được mẫu đã biết, mắt người bắt được cái lạ.
+
+Danh sách đầy đủ, nếu muốn làm tay:
 
 - [ ] Mở `/login` — vào được, có HTTPS.
 - [ ] Đăng nhập bằng tài khoản vừa tạo.

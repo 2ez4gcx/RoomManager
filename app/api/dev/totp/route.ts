@@ -6,22 +6,16 @@
  * sở dữ liệu — người gọi phải tự đưa khóa vào — nên không lộ 2FA của tài khoản
  * nào, nhưng vẫn không nên để mở ngoài môi trường phát triển.
  */
-import { env } from "cloudflare:workers";
 import { currentCounter, generateTotpCode, toBase32 } from "../../../../db/totp";
+import { devSetupLocked, isDevSetupEnabled } from "../../../lib/dev-setup";
 
-function isEnabled() {
-  const runtimeEnv = env as unknown as Record<string, string | undefined>;
-  return import.meta.env.DEV || runtimeEnv.ALLOW_DEV_SETUP === "true";
-}
 
 /** Khóa mẫu "12345678901234567890" trong phụ lục B của RFC 6238. */
 const RFC_SECRET = toBase32(new TextEncoder().encode("12345678901234567890"));
 const RFC_TIMES = [59, 1111111109, 1234567890, 2000000000];
 
 export async function GET(request: Request) {
-  if (!isEnabled()) {
-    return Response.json({ error: "Route này bị khóa." }, { status: 403 });
-  }
+  if (!isDevSetupEnabled()) return devSetupLocked();
 
   const params = new URL(request.url).searchParams;
 

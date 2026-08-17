@@ -254,6 +254,29 @@ test("tạo được tài khoản chủ nhà đầu tiên trên cơ sở dữ li
   }
 });
 
+test("đường thăm dò /api/dev/status báo đúng trạng thái và không đụng dữ liệu", async () => {
+  // `scripts/kiem-tra-sau-deploy.mjs` hỏi đường này thay vì POST vào
+  // /api/dev/setup, nên nó phải nói thật ở cả hai chiều — và tuyệt đối không
+  // được thay đổi gì.
+  const truoc = await authed("/api/rooms");
+  const soPhongTruoc = (await truoc.json()).rooms.length;
+
+  const mo = await anonymous("/api/dev/status");
+  assert.equal(mo.status, 200, "trong môi trường dev thì nhóm route đang mở");
+  assert.equal((await mo.json()).enabled, true);
+
+  const sau = await authed("/api/rooms");
+  assert.equal((await sau.json()).rooms.length, soPhongTruoc, "thăm dò không được đụng dữ liệu");
+
+  const locked = await makeWorker("room-manager-locked");
+  try {
+    const dong = await locked.dispatchFetch("http://localhost/api/dev/status");
+    assert.equal(dong.status, 403, "bản production phải báo đã khóa");
+  } finally {
+    await locked.dispose();
+  }
+});
+
 test("route tạo chủ nhà cũng bị khóa khi không khai báo ALLOW_DEV_SETUP", async () => {
   const locked = await makeWorker("room-manager-locked");
   try {

@@ -27,6 +27,9 @@ const PUBLIC_PREFIXES = [
   // được. Route dùng chung cổng khóa với /api/dev/setup và còn từ chối thêm
   // khi cơ sở dữ liệu đã có tài khoản.
   "/api/dev/create-owner",
+  // Chỉ báo nhóm route dev đang mở hay đóng, không làm gì. Phải mở để
+  // script kiểm tra sau deploy hỏi được mà không cần đăng nhập.
+  "/api/dev/status",
   "/api/dev/verify-hash",
   "/api/dev/totp",
   "/_next",
