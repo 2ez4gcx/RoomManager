@@ -67,6 +67,35 @@ Xóa sạch và nạp lại từ đầu:
 npm run db:reset
 ```
 
+### Chạy như một server (mở cho điện thoại trong cùng wifi)
+
+`npm run dev` **không được dùng làm server**: ở chế độ dev, `import.meta.env.DEV`
+là true nên nhóm route `/api/dev/` mở — mở ra mạng nội bộ nghĩa là ai trong cùng
+wifi cũng xoá sạch được cơ sở dữ liệu mà không cần đăng nhập.
+
+```bash
+npm run server:khoi-tao   # lần đầu: tạo cơ sở dữ liệu trống + tài khoản chủ nhà
+npm start                 # chạy server
+```
+
+Trên Windows thì nhấp đúp `chay-server.bat` (tự build rồi chạy).
+
+Chạy bản build production trên Miniflare 4 — đúng runtime của 132 bài kiểm thử
+— bind `0.0.0.0`, dữ liệu ở `.wrangler/state/server` tách khỏi cơ sở dữ liệu
+mẫu của `npm run dev`. Nhóm route `/api/dev/` bị khoá; chế độ `--khoi-tao` có
+mở nó nhưng khi ấy Miniflare không mở cổng mạng, mọi lời gọi đi qua
+`dispatchFetch` trong tiến trình.
+
+Xác nhận bằng:
+
+```bash
+npm run kiem-tra-deploy -- http://localhost:3000
+```
+
+Mạng nội bộ không có HTTPS nên mật khẩu đi qua wifi ở dạng chữ thường. Lệnh
+kiểm tra ghi rõ điều này nhưng không coi là lỗi chặn khi địa chỉ nằm trong dải
+IP riêng.
+
 ### Dùng thật
 
 Bắt đầu bằng cơ sở dữ liệu **trống**, không có dữ liệu mẫu và không có tài khoản mẫu.

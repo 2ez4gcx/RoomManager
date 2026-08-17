@@ -50,9 +50,31 @@ async function goi(duongDan, init = {}) {
 
 /* ---------------------------------------------------------------- */
 
+/** Địa chỉ trong nhà: máy này, hoặc dải IP riêng của mạng nội bộ. */
+function laMangNoiBo(dc) {
+  const host = dc.replace(/^https?:\/\//, "").split(":")[0];
+  return (
+    host === "localhost" ||
+    /^127\./.test(host) ||
+    /^10\./.test(host) ||
+    /^192\.168\./.test(host) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(host)
+  );
+}
+
 async function kiemTraKetNoi() {
-  if (!baseUrl.startsWith("https://") && !baseUrl.includes("localhost")) {
-    ghi("Kết nối HTTPS", false, `Địa chỉ dùng ${baseUrl.split(":")[0]}, không phải https`);
+  if (!baseUrl.startsWith("https://")) {
+    const noiBo = laMangNoiBo(baseUrl);
+    ghi(
+      "Kết nối HTTPS",
+      false,
+      noiBo
+        ? "Chạy trong mạng nội bộ nên không có HTTPS. Mật khẩu đi qua wifi ở dạng chữ thường, ai bắt được gói tin trong cùng mạng là đọc được. Chấp nhận khi mạng chỉ có thiết bị của mình."
+        : `Địa chỉ dùng ${baseUrl.split(":")[0]}, không phải https`,
+      // Mạng nội bộ thì đây là hạn chế không tránh được, ghi ra để biết chứ
+      // không chặn — phép kiểm nào lúc nào cũng đỏ thì người ta thôi nhìn nó.
+      !noiBo,
+    );
   }
 
   const { ok, res, loi } = await goi("/login");

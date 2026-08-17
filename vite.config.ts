@@ -21,6 +21,13 @@ const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
 
 const localBindingConfig = {
   main: "./worker/index.ts",
+  // Ghim ngày tương thích thay vì để plugin tự lấy ngày build. Hai lý do: bản
+  // build hôm nay và bản build tháng sau phải chạy giống hệt nhau, và ngày này
+  // phải khớp với ngày bộ kiểm thử dùng (tests/rendered-html.test.mjs) để 132
+  // bài kiểm thử nói về đúng runtime sẽ chạy thật. Ngày tự sinh còn vượt quá
+  // workerd đi kèm wrangler đang cài, làm `wrangler dev` không chạy nổi bản
+  // build ở máy. Muốn nâng thì nâng cả hai chỗ rồi chạy lại kiểm thử.
+  compatibility_date: "2026-05-15",
   compatibility_flags: ["nodejs_compat"],
   // Rà nhắc nợ mỗi ngày. 01:00 UTC là 08:00 giờ Việt Nam — đầu giờ làm việc,
   // để chủ nhà mở máy lên là đã có danh sách cần nhắc.

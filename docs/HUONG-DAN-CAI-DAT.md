@@ -13,7 +13,7 @@ Có hai kiểu, khác nhau ở chỗ dữ liệu nằm đâu:
 
 | | **Chạy trên một máy tính** | **Chạy trên Internet (Cloudflare)** |
 |---|---|---|
-| Mở được từ đâu | Chỉ máy đó | Điện thoại, máy nào cũng được |
+| Mở được từ đâu | Máy đó, và điện thoại trong cùng wifi | Bất kỳ đâu có mạng |
 | Dữ liệu nằm ở | Ổ cứng máy đó | Máy chủ Cloudflare |
 | Sao lưu | Bạn tự lo | Tự động, khôi phục được 30 ngày |
 | Máy tắt thì | Không ai vào được | Vẫn chạy |
@@ -119,10 +119,60 @@ nhập từ **Nhà & phòng**.
   đó.
 - **Đừng chạy `khoi-tao-that.bat` lần nữa** — nó xoá sạch để làm lại từ đầu.
 
+## A4b. Mở cho điện thoại trong nhà dùng chung
+
+`start.bat` chỉ mở được trên chính máy đó. Muốn dùng từ điện thoại khi đang ở
+nhà thì chạy **`chay-server.bat`**.
+
+Lần đầu nó sẽ bảo bạn chạy lệnh tạo cơ sở dữ liệu:
+
+```bash
+npm run server:khoi-tao
+```
+
+Lệnh hỏi email, họ tên, mật khẩu rồi tạo tài khoản chủ nhà — **và đăng nhập thử
+luôn bằng chính mật khẩu đó**, nên nếu có gì sai bạn biết ngay chứ không phải
+lúc đứng trước màn hình đăng nhập. Ở đây gõ tiếng Việt có dấu thoải mái.
+
+Xong thì nhấp đúp `chay-server.bat`. Nó in ra hai địa chỉ, ví dụ:
+
+```
+Trên máy này:        http://localhost:3000
+Máy khác/điện thoại: http://192.168.1.50:3000
+```
+
+Mở địa chỉ thứ hai trên điện thoại, miễn là điện thoại nối cùng wifi.
+
+**Ba điều phải biết về cách chạy này:**
+
+1. **Mật khẩu đi qua wifi ở dạng chữ thường.** Mạng nội bộ không có HTTPS. Ai
+   bắt được gói tin trong cùng mạng là đọc được mật khẩu. Chấp nhận được khi
+   wifi ở nhà chỉ có thiết bị của mình; **không** dùng ở wifi quán cà phê hay
+   nơi làm việc chung.
+2. **Windows Firewall sẽ chặn lần đầu.** Lần đầu chạy, Windows hiện hộp thoại
+   hỏi có cho phép Node.js không — chọn **Private networks** rồi Allow. Nếu lỡ
+   bấm nhầm, mở Windows Defender Firewall → Allow an app → tìm Node.js.
+3. **Địa chỉ IP có thể đổi** sau khi khởi động lại router. Đổi thì chạy lại
+   `chay-server.bat` để xem địa chỉ mới, hoặc nhờ người rành kỹ thuật đặt IP
+   tĩnh cho máy.
+
+Cơ sở dữ liệu của chế độ này nằm riêng ở `.wrangler\state\server`, tách khỏi
+dữ liệu mẫu của `start.bat`. Cố ý tách để `reset-data.bat` không bao giờ xoá
+nhầm số liệu thật.
+
+Kiểm tra server có an toàn không, chạy ở cửa sổ khác:
+
+```bash
+npm run kiem-tra-deploy -- http://localhost:3000
+```
+
 ## A5. Sao lưu (bắt buộc, kiểu này không tự sao lưu)
 
 Mỗi tuần: đóng cửa sổ đen để dừng phần mềm, rồi chép cả thư mục **`.wrangler`**
-sang USB hoặc Google Drive, đặt tên theo ngày, ví dụ `wrangler-2026-08-14`.
+sang USB hoặc Google Drive, đặt tên theo ngày, ví dụ `wrangler-2026-08-17`.
+
+Dùng `chay-server.bat` thì chỉ cần chép `.wrangler\state\server` — đó là nơi
+chứa số liệu thật.
 
 Nếu không thấy thư mục `.wrangler`: mở File Explorer → thẻ *View* → tích
 *Hidden items*.
