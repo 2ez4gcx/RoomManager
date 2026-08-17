@@ -21,7 +21,18 @@ export async function POST(request: Request) {
     // thay đổi cấu trúc tài sản hay bảng giá.
     const user = await requireApiUser();
     const body = (await request.json()) as Record<string, unknown>;
-    const entries = Array.isArray(body.entries) ? body.entries : [];
+
+    // Thiếu `entries` là lỗi của người gọi, không phải "chốt sổ xong mà không
+    // có gì". Trước đây gửi sai tên trường vẫn nhận 201 Created kèm
+    // `{created: 0}` — người gọi tưởng xong việc trong khi chưa phát hành đơn
+    // nào.
+    if (!Array.isArray(body.entries) || body.entries.length === 0) {
+      return Response.json(
+        { error: "Cần danh sách phòng để lập đơn (trường `entries`).", field: "entries" },
+        { status: 400 },
+      );
+    }
+    const entries = body.entries;
 
     const result = await issueInvoices({
       period: String(body.period ?? currentPeriod()),
@@ -37,7 +48,10 @@ export async function POST(request: Request) {
       }),
     });
 
-    return Response.json(result, { status: 201 });
+    // 201 Created chỉ đúng khi có thứ được tạo. Gửi danh sách rỗng hay sai tên
+    // trường mà vẫn nhận "Created" thì người gọi tưởng xong việc, trong khi
+    // chưa có đơn nào được phát hành.
+    return Response.json(result, { status: result.created > 0 ? 201 : 200 });
   } catch (error) {
     return toErrorResponse(error);
   }

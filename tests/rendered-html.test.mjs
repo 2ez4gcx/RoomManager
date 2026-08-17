@@ -168,6 +168,34 @@ test("đăng nhập được bằng tên đăng nhập ngắn, không bắt bu�
   assert.equal((await response.json()).user.role, "staff");
 });
 
+test("số tiền lẻ bị từ chối chứ không bị cắt âm thầm", async () => {
+  // `toNumber` từng `Math.trunc` giá trị đọc được, vô hiệu hóa 12 chỗ kiểm
+  // `Number.isInteger` trong db/. Gõ 1500.7 vào ô tiền thì lặng lẽ thành 1500
+  // và được ghi nhận là hợp lệ. Với phần mềm mà giá trị là con số đúng để
+  // nhìn, tự sửa con số người dùng gõ là kiểu hỏng tệ nhất.
+  const invoices = await (await authed("/api/invoices")).json();
+  const conNo = invoices.invoices.find((i) => i.outstanding > 1000);
+  assert.ok(conNo, "cần một đơn còn nợ để thử");
+
+  const le = await json("/api/payments", {
+    invoiceId: conNo.id,
+    amount: 1500.7,
+    method: "cash",
+  });
+  assert.equal(le.status, 400, "số lẻ phải bị từ chối");
+  assert.match((await le.json()).error, /số nguyên/i);
+
+  // Và các trường số khác cũng vậy, không riêng tiền.
+  const phong = await json("/api/rooms", {
+    propertyId: invoices.invoices[0].propertyId ?? "khong-quan-trong",
+    roomTypeId: "khong-quan-trong",
+    number: "999",
+    floor: 1.5,
+    price: 1000000,
+  });
+  assert.equal(phong.status, 400, "số tầng lẻ phải bị từ chối");
+});
+
 test("route dựng dữ liệu bị khóa khi không khai báo ALLOW_DEV_SETUP", async () => {
   // Bản build production không có biến này; route phải từ chối để không ai
   // xóa được cơ sở dữ liệu thật qua Internet.
@@ -1272,7 +1300,7 @@ test("chốt sổ lần nữa thì bỏ qua phòng đã có đơn, không tạo 
     period,
     entries: [{ contractId: issuedRow.contractId, currentReading: issuedRow.previousReading + 5 }],
   });
-  assert.equal(again.status, 201);
+  assert.equal(again.status, 200, "không tạo đơn nào thì không phải 201 Created");
   assert.deepEqual(await again.json(), { created: 0, skipped: 1, total: 1 });
 
   const { invoices } = await (await authed(`/api/invoices?period=${period}`)).json();
