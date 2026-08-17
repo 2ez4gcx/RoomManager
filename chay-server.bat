@@ -13,6 +13,19 @@ echo    - Chay ban build production, nen nhom route /api/dev/ bi khoa.
 echo    - Mo ra mang noi bo, dien thoai trong cung wifi vao duoc.
 echo.
 
+rem start.bat cung dung cong 3000. Chay ca hai la cai sau khong len duoc, ma
+rem thong bao cua Node thi kho hieu voi nguoi dung.
+curl -s -o nul --max-time 2 http://localhost:3000/login
+if not errorlevel 1 (
+  echo  [LOI] Cong 3000 dang co thu khac chiem.
+  echo.
+  echo  Nhieu kha nang start.bat dang chay ^(che do du lieu mau^).
+  echo  Dong cua so den do lai roi chay lai file nay.
+  echo.
+  pause
+  exit /b 1
+)
+
 where node >nul 2>&1
 if errorlevel 1 (
   echo  [LOI] Khong tim thay Node.js. Cai tai https://nodejs.org roi chay lai.

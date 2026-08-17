@@ -75,29 +75,38 @@ thu bịa sẵn để bạn bấm thử. Tài khoản xem thử:
 
 Cứ bấm thử thoải mái, có làm hỏng gì cũng không sao — đây là dữ liệu giả.
 
-## A2. Xoá dữ liệu mẫu, bắt đầu nhập dữ liệu thật
+## A2. Chuyển sang nhập số liệu thật
 
-Xem thử xong, muốn nhập số liệu thật của nhà trọ mình thì nhấp đúp
-**`khoi-tao-that.bat`** (cửa sổ đen của `start.bat` vẫn phải đang mở).
+Xem thử xong, muốn nhập số liệu thật của nhà trọ mình thì **không dùng
+`start.bat` nữa**. `start.bat` chỉ để xem thử; cơ sở dữ liệu của nó luôn luôn
+chỉ chứa dữ liệu mẫu.
 
-File này sẽ:
+Hai bước, làm một lần duy nhất:
 
-1. Hỏi bạn gõ `dung that` để xác nhận — đây là bước **xoá sạch**, gõ sai thì nó
-   huỷ, không xoá gì.
-2. Xoá toàn bộ dữ liệu mẫu.
-3. Hỏi email, họ tên, mật khẩu để tạo tài khoản chủ nhà của bạn.
+**Bước 1.** Nhấp đúp **`khoi-tao-that.bat`**. Nó hỏi:
+
+1. Gõ `dung that` để xác nhận.
+2. Email hoặc tên đăng nhập, họ tên, mật khẩu, số điện thoại.
+
+Rồi tạo cơ sở dữ liệu thật — trống hoàn toàn — cùng tài khoản chủ nhà của bạn.
+Xong nó **tự đăng nhập thử** bằng chính mật khẩu vừa đặt, nên có gì sai bạn
+biết ngay tại chỗ. Ở đây gõ tiếng Việt có dấu thoải mái.
+
+**Bước 2.** Từ nay mỗi lần muốn dùng, nhấp đúp **`chay-server.bat`**.
 
 Về mật khẩu: đặt ít nhất 8 ký tự, **đừng dùng lại mật khẩu email hay ngân
 hàng**. Phần mềm này giữ thông tin khách thuê và công nợ, nên nó đáng được một
 mật khẩu riêng.
 
-Ở bước này chỉ dùng **chữ không dấu và số**. Mật khẩu đi qua cửa sổ dòng lệnh
-nên chữ có dấu có thể bị đổi mà không báo lỗi — gõ xong lại không đăng nhập
-được, không hiểu vì sao. Đăng nhập xong muốn đổi sang mật khẩu phức tạp hơn thì
-vào trang *Cài đặt*, ở đó gõ gì cũng được.
+### Hai thư mục dữ liệu, đừng nhầm
 
-Xong là xong. Đăng nhập bằng tài khoản vừa tạo, phần mềm trống trơn, bắt đầu
-nhập từ **Nhà & phòng**.
+| Chạy bằng | Dữ liệu nằm ở | Nội dung |
+|---|---|---|
+| `start.bat` | `.wrangler\state3` | Chỉ dữ liệu mẫu. Xoá lúc nào cũng được. |
+| `chay-server.bat` | `.wrangler\state\server` | **Số liệu thật.** Đây là thư mục phải sao lưu. |
+
+Tách hẳn ra là cố ý: `reset-data.bat` chỉ đụng tới cơ sở dữ liệu mẫu, không có
+đường nào xoá nhầm số liệu thật.
 
 ## A3. Ba việc làm ngay sau khi đăng nhập lần đầu
 
@@ -113,28 +122,16 @@ nhập từ **Nhà & phòng**.
 
 ## A4. Những gì tuyệt đối không làm sau khi đã nhập dữ liệu thật
 
-- **Đừng chạy `reset-data.bat`.** File này xoá sạch dữ liệu thật rồi nạp lại dữ
-  liệu mẫu. Không hoàn tác được. Nó chỉ dành cho lúc xem thử.
-- **Đừng xoá thư mục `.wrangler`** trong thư mục phần mềm. Toàn bộ dữ liệu nằm ở
-  đó.
+- **Đừng xoá thư mục `.wrangler`** trong thư mục phần mềm. Toàn bộ số liệu nằm
+  ở đó.
 - **Đừng chạy `khoi-tao-that.bat` lần nữa** — nó xoá sạch để làm lại từ đầu.
 
-## A4b. Mở cho điện thoại trong nhà dùng chung
+`reset-data.bat` thì chạy thoải mái: nó chỉ nạp lại dữ liệu mẫu cho
+`start.bat`, không chạm tới số liệu thật.
 
-`start.bat` chỉ mở được trên chính máy đó. Muốn dùng từ điện thoại khi đang ở
-nhà thì chạy **`chay-server.bat`**.
+## A4b. Dùng từ điện thoại trong cùng wifi
 
-Lần đầu nó sẽ bảo bạn chạy lệnh tạo cơ sở dữ liệu:
-
-```bash
-npm run server:khoi-tao
-```
-
-Lệnh hỏi email, họ tên, mật khẩu rồi tạo tài khoản chủ nhà — **và đăng nhập thử
-luôn bằng chính mật khẩu đó**, nên nếu có gì sai bạn biết ngay chứ không phải
-lúc đứng trước màn hình đăng nhập. Ở đây gõ tiếng Việt có dấu thoải mái.
-
-Xong thì nhấp đúp `chay-server.bat`. Nó in ra hai địa chỉ, ví dụ:
+`chay-server.bat` in ra hai địa chỉ, ví dụ:
 
 ```
 Trên máy này:        http://localhost:3000
@@ -156,9 +153,8 @@ Mở địa chỉ thứ hai trên điện thoại, miễn là điện thoại n�
    `chay-server.bat` để xem địa chỉ mới, hoặc nhờ người rành kỹ thuật đặt IP
    tĩnh cho máy.
 
-Cơ sở dữ liệu của chế độ này nằm riêng ở `.wrangler\state\server`, tách khỏi
-dữ liệu mẫu của `start.bat`. Cố ý tách để `reset-data.bat` không bao giờ xoá
-nhầm số liệu thật.
+Nhắc nợ tự động chạy mỗi ngày sau 8 giờ sáng, miễn là server đang mở. Máy tắt
+qua đêm thì nó rà vào lần mở máy tiếp theo, không bỏ ngày.
 
 Kiểm tra server có an toàn không, chạy ở cửa sổ khác:
 
@@ -291,14 +287,15 @@ sàng.
 Có thể đang bị tạm khoá do nhập sai 5 lần trong 15 phút. Chờ hết 15 phút.
 
 **Vừa chạy `khoi-tao-that.bat` xong mà không đăng nhập được**
-Nhiều khả năng mật khẩu có chữ có dấu hoặc ký tự lạ, bị đổi lúc gửi đi. Lúc này
-bạn **chưa nhập dữ liệu gì**, nên cứ chạy lại `khoi-tao-that.bat` từ đầu và đặt
-mật khẩu chỉ gồm chữ không dấu và số. (Lời dặn "đừng chạy lại" ở mục A4 chỉ áp
-dụng sau khi bạn đã nhập số liệu thật.)
+Gần như không xảy ra: `khoi-tao-that.bat` tự đăng nhập thử ngay sau khi tạo và
+báo lỗi tại chỗ nếu không được. Nếu vẫn gặp, lúc này bạn **chưa nhập dữ liệu
+gì**, cứ chạy lại từ đầu. (Lời dặn "đừng chạy lại" ở mục A4 chỉ áp dụng sau khi
+đã nhập số liệu thật.)
 
-**Chạy nhầm `reset-data.bat`, mất dữ liệu thật**
-Kiểu "một máy tính": phục hồi từ bản sao lưu thư mục `.wrangler` (mục A5). Không
-có bản sao lưu thì không lấy lại được.
+**Mất số liệu thật**
+`reset-data.bat` không gây ra được chuyện này — nó chỉ đụng tới dữ liệu mẫu.
+Nếu mất vì lý do khác: phục hồi từ bản sao lưu `.wrangler\state\server`
+(mục A5). Không có bản sao lưu thì không lấy lại được.
 Kiểu Cloudflare: dùng Time Travel, xem mục 9 của DEPLOY-CLOUDFLARE.md.
 
 **Muốn chuyển dữ liệu từ máy tính lên Cloudflare**

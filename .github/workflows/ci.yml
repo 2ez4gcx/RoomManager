@@ -39,7 +39,7 @@ jobs:
       - name: Lint
         run: npm run lint
 
-      - name: Typecheck, build và 131 bài kiểm thử
+      - name: Typecheck, build và toàn bộ bài kiểm thử
         # npm test đã gồm typecheck và build; chạy riêng từng bước sẽ build hai
         # lần cho cùng một kết quả.
         run: npm test
@@ -64,7 +64,7 @@ jobs:
         run: npm audit --omit=dev --audit-level=low
 
       - name: Cây dev/build - chỉ báo, không chặn
-        # Toolchain phát triển còn 14 cảnh báo chưa gỡ được; xem lý do ở commit
+        # Toolchain phát triển còn cảnh báo chưa gỡ được; xem lý do ở commit
         # "Giảm cảnh báo dependency từ 21 xuống 14". Ghi ra để thấy khi nào con
         # số đổi, nhưng không chặn merge vì chúng không chạm tới runtime.
         run: npm audit || true

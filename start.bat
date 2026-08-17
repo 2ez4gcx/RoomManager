@@ -35,7 +35,8 @@ if !NODE_MAJOR! LSS 22 (
 rem --- Server da chay san thi chi mo trinh duyet --------------------------
 curl -s -o nul --max-time 3 http://localhost:3000/login
 if not errorlevel 1 (
-  echo  Server dang chay san tai http://localhost:3000
+  echo  Da co gi do chay san o http://localhost:3000
+  echo  Neu do la chay-server.bat thi day la SO LIEU THAT, khong phai du lieu mau.
   echo  Dang mo trinh duyet...
   start "" http://localhost:3000/login
   echo.
@@ -66,12 +67,10 @@ start "RoomManager - mo trinh duyet" /min "%~f0" --open
 rem --- Chay server o cua so nay -------------------------------------------
 echo  [3/3] Dang khoi dong server...
 echo.
-if exist ".du-lieu-that" (
-  echo  Che do DUNG THAT: dang nhap bang tai khoan cua ban.
-) else (
-  echo  Du lieu mau. Dang nhap:  quanly@hoangan.vn / roommanager
-  echo  Muon nhap du lieu that thi chay khoi-tao-that.bat
-)
+echo  DU LIEU MAU - khong phai so lieu that.
+echo  Dang nhap:  quanly@hoangan.vn / roommanager
+echo.
+echo  Muon nhap so lieu that thi dung khoi-tao-that.bat roi chay-server.bat.
 echo  Dong cua so nay hoac nhan Ctrl+C de dung server.
 echo.
 call npm run dev
@@ -100,13 +99,7 @@ if errorlevel 1 (
 )
 
 rem Dung bang va nap du lieu mau. Neu da co du lieu, route nay tu bo qua.
-rem File .du-lieu-that danh dau may nay dang chua du lieu that: khong duoc
-rem nap du lieu mau vao, ke ca khi co so du lieu dang trong.
-if exist ".du-lieu-that" (
-  curl -s -X POST "http://localhost:3000/api/dev/setup?migrate=true" >nul 2>&1
-) else (
-  curl -s -X POST http://localhost:3000/api/dev/setup >nul 2>&1
-)
+curl -s -X POST http://localhost:3000/api/dev/setup >nul 2>&1
 
 start "" http://localhost:3000/login
 exit /b 0

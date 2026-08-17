@@ -164,6 +164,48 @@ if (khoiTao) {
 } else {
   const mf = await dựngWorker({ moCong: true });
 
+  /**
+   * Rà nhắc nợ mỗi ngày một lần.
+   *
+   * Bản deploy trên Cloudflare có Cron Trigger lo việc này (`triggers.crons`
+   * trong vite.config.ts). Miniflare không tự chạy cron, nên chế độ server ở
+   * máy phải tự hẹn giờ — không có thì tính năng nhắc nợ im lặng ngừng hoạt
+   * động mà không ai biết, chỉ còn nút "Rà lại ngay" bấm tay.
+   *
+   * Kiểm mỗi 15 phút thay vì hẹn đúng 08:00: máy tính để bàn hay bị ngủ hoặc
+   * tắt qua đêm, hẹn một mốc cố định là lỡ luôn ngày đó.
+   */
+  const GIO_RA = 8;
+  let ngayDaRa = null;
+
+  async function raNhacNoNeuDenGio() {
+    const now = new Date();
+    const homNay = now.toLocaleDateString("sv-SE");
+    if (ngayDaRa === homNay || now.getHours() < GIO_RA) return;
+
+    ngayDaRa = homNay;
+    const gio = now.toLocaleTimeString("vi-VN");
+    try {
+      // Gọi trong tiến trình. Đường HTTP `/cdn-cgi/handler/scheduled` cần bật
+      // `unsafeTriggerHandlers`, mà bật thì bất kỳ ai trong wifi cũng kích
+      // được handler ghi dữ liệu, không cần đăng nhập.
+      const worker = await mf.getWorker();
+      const kq = await worker.scheduled({ scheduledTime: Date.now(), cron: "0 1 * * *" });
+      console.log(
+        kq.outcome === "ok"
+          ? `  [${gio}] Đã rà nhắc nợ cho ngày ${homNay}.`
+          : `  [${gio}] Rà nhắc nợ không xong (${kq.outcome}). Vào trang Nhắc nợ bấm "Rà lại ngay".`,
+      );
+    } catch (loi) {
+      console.log(`  [${gio}] Rà nhắc nợ thất bại: ${loi.message}`);
+      // Thử lại ở lần kiểm sau thay vì bỏ luôn cả ngày.
+      ngayDaRa = null;
+    }
+  }
+
+  await raNhacNoNeuDenGio();
+  const hẹnGiờ = setInterval(raNhacNoNeuDenGio, 15 * 60 * 1000);
+
   console.log("");
   console.log("  ==========================================");
   console.log("   RoomManager đang chạy");
@@ -175,6 +217,7 @@ if (khoiTao) {
   }
   console.log("");
   console.log("  Nhóm route /api/dev/ đã khóa (bản build production).");
+  console.log(`  Rà nhắc nợ tự động: mỗi ngày sau ${GIO_RA} giờ sáng.`);
   console.log(`  Dữ liệu: ${thuMucDuLieu}`);
   console.log("");
   console.log("  Kiểm tra an toàn từ cửa sổ khác:");
@@ -185,6 +228,9 @@ if (khoiTao) {
 
   const dừng = async () => {
     console.log("\n  Đang dừng...");
+    // Dọn hẹn giờ trước khi dispose: nó bắn đúng lúc đang tắt là gọi vào một
+    // Miniflare đã đóng, ném lỗi không ai bắt.
+    clearInterval(hẹnGiờ);
     await mf.dispose();
     process.exit(0);
   };
