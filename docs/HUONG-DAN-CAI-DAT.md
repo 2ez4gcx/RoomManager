@@ -130,6 +130,14 @@ Nếu không thấy thư mục `.wrangler`: mở File Explorer → thẻ *View* 
 Muốn phục hồi: dừng phần mềm, xoá thư mục `.wrangler` hiện có, chép bản sao lưu
 vào đúng chỗ cũ, chạy lại `start.bat`.
 
+Quy trình này đã được chạy thử thật: dừng phần mềm, chép `.wrangler` ra ngoài,
+xoá hẳn thư mục gốc, chép bản sao lưu về, khởi động lại — dữ liệu về đủ, đăng
+nhập bằng tài khoản cũ bình thường.
+
+Bước **dừng phần mềm trước khi chép** không bỏ được. Chép lúc phần mềm đang
+chạy có thể ra một bản sao dở dang, và bản sao dở dang thì lúc cần mới biết là
+hỏng.
+
 Bản sao lưu chưa từng thử phục hồi thì chưa chắc dùng được. Mỗi tháng nên thử
 một lần trên máy khác.
 

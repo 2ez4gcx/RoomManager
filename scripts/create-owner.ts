@@ -6,7 +6,9 @@
  * vì nó xóa sạch dữ liệu.
  *
  * Chỉ dành cho D1 trên Cloudflare (`--remote`). Bản chạy ở máy có đường riêng
- * là `POST /api/dev/create-owner`, xem `khoi-tao-that.bat`.
+ * là `POST /api/dev/create-owner`, xem `khoi-tao-that.bat` — đường đó nói
+ * chuyện với chính tiến trình đang phục vụ trình duyệt nên không thể ghi nhầm
+ * cơ sở dữ liệu.
  *
  * Dùng chung `db/password-hash.ts` với máy chủ nên định dạng băm chắc chắn
  * khớp; có bài kiểm thử đối chiếu giữa Node và workerd.
@@ -63,8 +65,8 @@ console.log("");
 console.log(`  npx wrangler d1 execute <TEN_DATABASE> --remote --command "${escaped}"`);
 console.log("");
 console.log("Muốn tạo tài khoản cho bản chạy ở máy thì đừng dùng lệnh trên với --local:");
-console.log("wrangler mở một file SQLite khác với file mà npm run dev đang dùng.");
-console.log("Chạy khoi-tao-that.bat, hoặc gọi POST /api/dev/create-owner.");
+console.log("wrangler có thể mở một file SQLite khác với file mà npm run dev đang dùng,");
+console.log("và khi đó nó vẫn báo thành công. Chạy khoi-tao-that.bat để chắc chắn.");
 console.log("");
 console.log(`Đăng nhập:  ${login}  /  (mật khẩu vừa nhập)`);
 console.log("");

@@ -85,7 +85,9 @@ curl -X POST http://localhost:3000/api/dev/create-owner   -H "content-type: appl
 
 Route `create-owner` chỉ chạy khi cơ sở dữ liệu **chưa có tài khoản nào**; từ tài khoản thứ hai trở đi thì tạo ở trang **Tài khoản**.
 
-Trên Cloudflare thì khác — dùng `npm run create-owner`, xem [docs/DEPLOY-CLOUDFLARE.md](docs/DEPLOY-CLOUDFLARE.md). Đừng chạy lệnh `wrangler d1 execute --local` mà script đó in ra: wrangler mở một file SQLite khác với file `npm run dev` đang dùng, tài khoản tạo xong sẽ không đăng nhập được.
+Trên Cloudflare thì khác — dùng `npm run create-owner`, xem [docs/DEPLOY-CLOUDFLARE.md](docs/DEPLOY-CLOUDFLARE.md).
+
+Đừng chạy lệnh `wrangler d1 execute --local` mà script đó in ra. Wrangler và `npm run dev` **có lúc** dùng chung file SQLite, có lúc không — tên file do Miniflare băm ra từ cấu hình mà mỗi bên được khởi động cùng, nên nếu server đang chạy với cấu hình cũ hơn `dist/server/wrangler.json` thì hai bên rẽ sang hai cơ sở dữ liệu khác nhau. Đã gặp cả hai trường hợp trên cùng một máy. Hỏng thì hỏng âm thầm: lệnh báo thành công, tài khoản nằm trong file kia, đăng nhập báo sai mật khẩu. Đường qua `khoi-tao-that.bat` không có rủi ro đó vì nó nói chuyện với chính tiến trình đang phục vụ trình duyệt.
 
 Sau khi đăng nhập lần đầu: đổi mật khẩu ở trang **Cài đặt** (mật khẩu vừa gõ đang nằm trong lịch sử lệnh của terminal), bật **xác thực hai bước**, và tạo thêm **một tài khoản chủ nhà thứ hai** để phòng khi quên mật khẩu.
 
