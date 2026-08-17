@@ -47,8 +47,12 @@ export function toErrorResponse(error: unknown) {
   if (error instanceof ValidationError) {
     return Response.json({ error: error.message, field: error.field }, { status: 400 });
   }
+  // Lỗi ngoài dự kiến: ghi ra log cho người vận hành, trả cho client một câu
+  // chung. Thông báo gốc hay chứa tên bảng, tên cột hoặc mảnh câu SQL — không
+  // giúp gì người dùng mà lại vẽ bản đồ hệ thống cho người dò.
+  console.error("[loi-khong-mong-doi]", error);
   return Response.json(
-    { error: error instanceof Error ? error.message : String(error) },
+    { error: "Có lỗi xảy ra. Thử lại, nếu vẫn lỗi thì báo người quản trị." },
     { status: 500 },
   );
 }

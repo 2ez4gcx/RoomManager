@@ -282,6 +282,20 @@ export const contracts = sqliteTable(
   (table) => [
     index("contracts_room_idx").on(table.roomId),
     index("contracts_status_idx").on(table.status),
+    /**
+     * Một phòng chỉ được có một hợp đồng còn hiệu lực.
+     *
+     * Mã ứng dụng đã kiểm điều này trước khi ký, nhưng kiểm rồi mới ghi là
+     * cửa sổ cho hai yêu cầu đồng thời cùng lọt qua — hậu quả là hai người
+     * cùng thuê một phòng, phát hiện ra thì đã thu tiền cả hai. Ràng buộc ở
+     * tầng cơ sở dữ liệu không có cửa sổ đó.
+     *
+     * Index một phần: hợp đồng đã kết thúc hay bị hủy không chiếm chỗ, nên
+     * phòng cho thuê lại được.
+     */
+    uniqueIndex("contracts_room_active_unq")
+      .on(table.roomId)
+      .where(sql`${table.status} = 'active'`),
   ],
 );
 

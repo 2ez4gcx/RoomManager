@@ -2715,3 +2715,64 @@ test("bỏ qua khóa thiết lập không nằm trong danh sách cho phép", asy
   const response = await json("/api/settings", { "khoa.la": "giá trị" }, "PUT");
   assert.equal(response.status, 400, "khóa lạ không được tạo thiết lập mới");
 });
+
+test("hai yêu cầu đồng thời không tạo được hai hợp đồng trên cùng một phòng", async () => {
+  // Mã ứng dụng kiểm phòng còn trống trước khi ký, nhưng kiểm rồi mới ghi là
+  // còn cửa sổ cho hai yêu cầu cùng lọt.
+  //
+  // Bài này canh HÀNH VI — chỉ một hợp đồng được tạo — chứ chưa chứng minh
+  // được cơ chế nào chặn. Đã thử gỡ index `contracts_room_active_unq` rồi
+  // chạy lại: vẫn xanh, nên ở môi trường kiểm thử này D1 tuần tự hóa đủ để
+  // hai yêu cầu không thật sự chạm nhau. Index vẫn giữ vì nó là lớp chặn duy
+  // nhất không có cửa sổ, nhưng muốn chứng minh nó thì cần chèn thẳng hàng
+  // thứ hai vào cơ sở dữ liệu, không đi qua HTTP.
+  //
+  // Đặt cuối file vì nó ký một hợp đồng mới, làm lệch số phòng trống mà các
+  // bài phía trên trông vào.
+  // Tự dựng phòng riêng thay vì trông vào phòng trống còn sót: các bài phía
+  // trên đã ký hết hợp đồng, mà bài này nói về ràng buộc cạnh tranh chứ không
+  // nên phụ thuộc thứ tự chạy.
+  const { properties } = await (await authed("/api/properties")).json();
+  const nha = properties[0];
+  const loai = await json("/api/room-types", {
+    propertyId: nha.id,
+    code: "CTR",
+    name: "Phòng thử cạnh tranh",
+    basePrice: 2500000,
+    defaultDeposit: 2500000,
+    maxOccupants: 2,
+  });
+  assert.equal(loai.status, 201);
+
+  const taoPhong = await json("/api/rooms", {
+    propertyId: nha.id,
+    roomTypeId: (await loai.json()).roomType.id,
+    number: "CTR-01",
+    floor: 1,
+    price: 2500000,
+    area: 18,
+  });
+  assert.equal(taoPhong.status, 201);
+  const trong = (await taoPhong.json()).room;
+
+  const hopDong = (ten, sdt) =>
+    json("/api/tenants", {
+      fullName: ten,
+      phone: sdt,
+      roomId: trong.id,
+      startDate: new Date().toISOString().slice(0, 10),
+    });
+
+  const ketQua = await Promise.all([
+    hopDong("Người Thuê Thứ Nhất", "0911000001"),
+    hopDong("Người Thuê Thứ Hai", "0911000002"),
+  ]);
+
+  const thanhCong = ketQua.filter((r) => r.status === 201);
+  assert.equal(thanhCong.length, 1, "chỉ một trong hai yêu cầu được phép thành công");
+
+  // Và cơ sở dữ liệu phải đúng một hợp đồng còn hiệu lực cho phòng đó.
+  const sau = await (await authed("/api/rooms")).json();
+  const phong = sau.rooms.find((r) => r.id === trong.id);
+  assert.equal(phong.status, "Đang thuê");
+});

@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX `contracts_room_active_unq` ON `contracts` (`room_id`) WHERE "contracts"."status" = 'active';
