@@ -140,6 +140,11 @@ async function kiemTraRouteDungDuLieu() {
 /**
  * Tải thử mọi CSS/JS/font mà trang khai báo.
  *
+ * Lưu ý biểu thức bóc đường dẫn: HTML còn chứa payload RSC với chuỗi đã thoát
+ * kiểu `\"/_next/...css\"`, nên phải loại cả dấu gạch chéo ngược ra khỏi tên
+ * tệp. Thiếu chỗ đó thì địa chỉ bóc ra có đuôi thừa; ở máy Windows vẫn mở được
+ * vì hệ tệp tự chuẩn hóa, nhưng lên Cloudflare thì trả 308 và lệnh báo hỏng oan.
+ *
  * Chỉ kiểm mã trạng thái của HTML là chưa đủ, và đây không phải lo xa: bản
  * `chay-server.bat` đầu tiên trả 200 cho mọi trang trong khi 100% asset đều
  * 404 — giao diện trần trụi, client không hydrate — mà lệnh này vẫn báo đủ
@@ -152,7 +157,7 @@ async function kiemTraTaiNguyen(duongDanTrang) {
   const html = await res.text();
   const duongDan = [
     ...new Set(
-      [...html.matchAll(/["'(](\/(?:_next|favicon|og)[^"')\s]*)/g)].map((m) => m[1]),
+      [...html.matchAll(/["'(](\/(?:_next|favicon|og)[^"')\\\s]*)/g)].map((m) => m[1]),
     ),
   ];
 

@@ -7,7 +7,7 @@
  */
 import assert from "node:assert/strict";
 import { after, before, test } from "node:test";
-import { readdir } from "node:fs/promises";
+import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Miniflare } from "miniflare";
@@ -194,6 +194,31 @@ test("số tiền lẻ bị từ chối chứ không bị cắt âm thầm", asy
     price: 1000000,
   });
   assert.equal(phong.status, 400, "số tầng lẻ phải bị từ chối");
+});
+
+test("số vòng PBKDF2 không vượt trần của Cloudflare Workers", async () => {
+  // Runtime thật từ chối PBKDF2 quá 100.000 vòng: "iteration counts above
+  // 100000 are not supported". workerd chạy ở máy KHÔNG áp giới hạn đó, nên
+  // toàn bộ bài kiểm thử vẫn xanh trong khi không ai đăng nhập được trên bản
+  // deploy — đúng chuyện đã xảy ra ở lần deploy đầu tiên.
+  //
+  // Bài này canh con số chứ không canh hành vi, vì hành vi ở máy không tái
+  // hiện được lỗi.
+  const nguon = await readFile(new URL("../db/password-hash.ts", import.meta.url), "utf8");
+  const khop = nguon.match(/const PBKDF2_ITERATIONS = ([\d_]+);/);
+  assert.ok(khop, "không đọc được số vòng PBKDF2 trong db/password-hash.ts");
+
+  const soVong = Number(khop[1].replaceAll("_", ""));
+  assert.ok(soVong > 0, "số vòng phải là số dương");
+  assert.ok(
+    soVong <= 100_000,
+    `PBKDF2 đặt ${soVong.toLocaleString("vi-VN")} vòng, vượt trần 100.000 của Cloudflare Workers. ` +
+      "Đặt cao hơn thì không ai đăng nhập được trên bản deploy thật.",
+  );
+
+  // Và chuỗi băm sinh ra phải ghi đúng số vòng đó.
+  const hash = await hashPassword("kiem-tra-so-vong");
+  assert.equal(hash.split("$")[1], String(soVong));
 });
 
 test("route dựng dữ liệu bị khóa khi không khai báo ALLOW_DEV_SETUP", async () => {

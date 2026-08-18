@@ -7,7 +7,21 @@
  *
  * Workers không chạy được bcrypt/argon2 vì đó là mã native.
  */
-const PBKDF2_ITERATIONS = 210_000;
+/**
+ * Số vòng lặp PBKDF2.
+ *
+ * 100.000 là TRẦN CỨNG của runtime Cloudflare Workers, không phải lựa chọn:
+ * đặt cao hơn thì Web Crypto ném "iteration counts above 100000 are not
+ * supported" và không ai đăng nhập được. Trước đây con số này là 210.000 —
+ * chạy tốt trên workerd ở máy vì bản local không áp giới hạn, nên 138 bài kiểm
+ * thử đều xanh, và chỉ vỡ ra ở lần deploy thật đầu tiên.
+ *
+ * Đừng nâng lên nếu chưa thử đăng nhập trên một bản deploy thật.
+ */
+const PBKDF2_ITERATIONS = 100_000;
+
+/** Trần của nền tảng. Vượt qua là Web Crypto từ chối. */
+export const PBKDF2_MAX_ITERATIONS = 100_000;
 const SALT_BYTES = 16;
 const KEY_BITS = 256;
 
@@ -56,6 +70,12 @@ export async function verifyPassword(password: string, stored: string | null) {
   const [scheme, iterations, salt, hash] = stored.split("$");
   if (scheme !== "pbkdf2" || !iterations || !salt || !hash) return false;
 
-  const candidate = await derive(password, fromBase64(salt), Number(iterations));
+  const soVong = Number(iterations);
+  // Chuỗi băm cũ có thể ghi số vòng vượt trần của nền tảng. Trả false thay vì
+  // để Web Crypto ném lỗi — người dùng thấy "sai mật khẩu" và đi đặt lại, còn
+  // hơn nhận màn hình lỗi 500 không hiểu gì.
+  if (!Number.isFinite(soVong) || soVong <= 0 || soVong > PBKDF2_MAX_ITERATIONS) return false;
+
+  const candidate = await derive(password, fromBase64(salt), soVong);
   return timingSafeEqual(candidate, fromBase64(hash));
 }

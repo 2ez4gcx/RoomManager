@@ -129,6 +129,13 @@ export async function POST(request: Request) {
       },
     );
   } catch (error) {
-    return Response.json({ error: (error as Error).message }, { status: 500 });
+    // Không trả nguyên văn thông báo lỗi: nó từng lộ ra cả cấu hình mã hóa
+    // ("Pbkdf2 failed: iteration counts above 100000...") cho người chưa đăng
+    // nhập.
+    console.error("[dang-nhap]", error);
+    return Response.json(
+      { error: "Có lỗi xảy ra. Thử lại, nếu vẫn lỗi thì báo người quản trị." },
+      { status: 500 },
+    );
   }
 }

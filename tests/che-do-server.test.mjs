@@ -62,7 +62,7 @@ after(async () => {
 
 /** Bóc mọi đường dẫn tĩnh mà trang khai báo. */
 function bocTaiNguyen(html) {
-  return [...new Set([...html.matchAll(/["'(](\/(?:_next|favicon|og)[^"')\s]*)/g)].map((m) => m[1]))];
+  return [...new Set([...html.matchAll(/["'(](\/(?:_next|favicon|og)[^"')\\\s]*)/g)].map((m) => m[1]))];
 }
 
 test("mọi tài nguyên tĩnh của trang đăng nhập đều tải được", async () => {
