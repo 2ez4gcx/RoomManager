@@ -5,7 +5,37 @@ import {
   LayoutDashboard, LogOut, Menu, Plus, Search, Settings, UserCog, Users, X,
 } from "lucide-react";
 import { usePathname } from "next/navigation";
-import Link from "next/link";
+import type { ReactNode } from "react";
+
+/**
+ * Điều hướng bằng thẻ `<a>` thường thay cho `next/link`.
+ *
+ * Router phía client của vinext 1.0.0-beta.2 hỏng ở bản build production: nó
+ * chặn cú bấm rồi ném `TypeError: ee is not a function` trong chunk AppShell,
+ * nên bấm menu đứng im, phải mở tab mới. Đã tái hiện ở cả bản chạy máy lẫn bản
+ * trên Cloudflare — cùng một bản build, không phải lỗi riêng của nền tảng.
+ *
+ * Thẻ `<a>` tải lại cả trang. Chậm hơn một nhịp, nhưng mọi trang ở đây đều do
+ * máy chủ kết xuất sẵn nên không mất trạng thái gì, và quan trọng hơn: nó chạy.
+ * Bỏ được khi nào vinext sửa router và đã kiểm chứng trên bản deploy thật.
+ */
+function Link({
+  href,
+  className,
+  onClick,
+  children,
+}: {
+  href: string;
+  className?: string;
+  onClick?: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <a href={href} className={className} onClick={onClick}>
+      {children}
+    </a>
+  );
+}
 import { useState } from "react";
 import type { SessionUser } from "../../db/auth";
 import { initials } from "../lib/format";
@@ -102,7 +132,7 @@ export function PageHeader({ eyebrow, title, description, children }: { eyebrow?
   return <div className="page-heading"><div>{eyebrow && <p className="eyebrow">{eyebrow}</p>}<h1>{title}</h1><p>{description}</p></div>{children}</div>;
 }
 
-export function StatusBadge({ children, tone = "green" }: { children: React.ReactNode; tone?: "green" | "gold" | "red" | "gray" | "blue" }) {
+export function StatusBadge({ children, tone = "green" }: { children: React.ReactNode; tone?: "green" | "gold" | "red" | "gray" | "blue" | "pale" }) {
   return <span className={`ui-badge badge-${tone}`}>{children}</span>;
 }
 

@@ -364,3 +364,41 @@ input:disabled, select:disabled { background: #f4f2ec; color: #8b938f; cursor: n
 .reminder-actions { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; }
 .reminder-actions .secondary-button, .reminder-actions .primary-button { padding: 7px 11px; font-size: 10px; }
 .reminder-spacer { flex: 1; min-width: 8px; }
+
+/* ------------------------------------------------------------------ */
+/* Chữ to hơn một nhịp và trạng thái phòng trống nhạt đi.
+   Đặt cuối file dưới dạng ghi đè thay vì sửa rải rác hàng trăm quy tắc
+   phía trên: dễ đọc lại, dễ chỉnh tiếp, và không đụng vào bố cục. */
+
+/* Cỡ chữ gốc của khu quản trị. Các con số dưới đây đều là mức cũ cộng
+   1–2px — đủ dễ đọc trên màn hình lớn mà không phá bố cục lưới. */
+.data-table th { font-size: 10px; }
+.data-table td { font-size: 13px; }
+.nav-item { font-size: 14px; }
+.nav-label { font-size: 11px; }
+.sidebar-card p { font-size: 14px; }
+.sidebar-card span { font-size: 12px; }
+.sidebar-card > a { font-size: 12px; }
+.avatar { font-size: 12px; }
+.settings-nav a { font-size: 12px; }
+.settings-body label, .settings-panel label { font-size: 11px; }
+.settings-body input, .settings-body select { font-size: 12px; }
+.setting-unit span { font-size: 11px; }
+.toggle-list strong { font-size: 12px; }
+.toggle-list .toggle-copy > span { font-size: 10px; }
+.security-callout strong { font-size: 12px; }
+.security-callout p { font-size: 10px; }
+.security-callout button { font-size: 11px; }
+.ui-badge { font-size: 11px; padding: 5px 10px; }
+.room-number { font-size: 12px; }
+.room-card { font-size: 13px; }
+.room-tenant span, .room-price span { font-size: 12px; }
+.status-pill { font-size: 10px !important; }
+
+/* Phòng chưa có khách: trạng thái tô nhạt để quét mắt qua là thấy ngay
+   phòng nào đang trống, không phải đọc từng chữ. */
+.badge-pale {
+  color: #8a938e;
+  background: #f4f2ec;
+  border: 1px solid #e3e0d7;
+}

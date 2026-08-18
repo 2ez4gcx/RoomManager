@@ -11,9 +11,16 @@ import { formatDate, money } from "../lib/format";
 import type { SessionUser } from "../../db/auth";
 import type { PropertyOption, RoomStatus, RoomTypeOption, RoomView } from "../../db/queries";
 
-const tones: Record<RoomStatus, "green" | "blue" | "gold" | "gray"> = {
+/**
+ * Màu trạng thái phòng.
+ *
+ * "Trống" tô nhạt hẳn: nhìn lướt bảng 40 phòng là thấy ngay chỗ nào chưa có
+ * khách, không phải đọc từng chữ. Các trạng thái cần chú ý — đang thuê, giữ
+ * chỗ, bảo trì — giữ màu đậm.
+ */
+const tones: Record<RoomStatus, "green" | "pale" | "gold" | "gray"> = {
   "Đang thuê": "green",
-  Trống: "blue",
+  Trống: "pale",
   "Đã giữ": "gold",
   "Bảo trì": "gray",
 };
