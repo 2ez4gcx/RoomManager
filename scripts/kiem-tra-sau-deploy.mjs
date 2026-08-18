@@ -39,13 +39,29 @@ function ghi(muc, dat, chiTiet, nghiemTrong = true) {
   ketQua.push({ muc, dat, chiTiet, nghiemTrong });
 }
 
+/**
+ * Gọi một đường dẫn, thử lại một lần nếu đứt kết nối.
+ *
+ * Không thử lại thì một cú nghẽn mạng thoáng qua đủ làm cả lệnh báo đỏ. Một
+ * cổng phát hành đỏ vì lý do không liên quan tới bản deploy thì lần sau người
+ * ta bỏ qua nó — đã gặp đúng chuyện này với asset trên bản demo, thử lại ba
+ * lần đều 200.
+ *
+ * Chỉ thử lại khi KHÔNG nối được. Mã trạng thái xấu là câu trả lời thật của
+ * máy chủ, thử lại chỉ che mất.
+ */
 async function goi(duongDan, init = {}) {
-  try {
-    const res = await fetch(baseUrl + duongDan, { redirect: "manual", ...init });
-    return { ok: true, res };
-  } catch (error) {
-    return { ok: false, loi: error instanceof Error ? error.message : String(error) };
+  let loiCuoi;
+  for (let lan = 0; lan < 2; lan += 1) {
+    try {
+      const res = await fetch(baseUrl + duongDan, { redirect: "manual", ...init });
+      return { ok: true, res };
+    } catch (error) {
+      loiCuoi = error instanceof Error ? error.message : String(error);
+      if (lan === 0) await new Promise((r) => setTimeout(r, 1500));
+    }
   }
+  return { ok: false, loi: `${loiCuoi} (đã thử lại 1 lần)` };
 }
 
 /* ---------------------------------------------------------------- */
