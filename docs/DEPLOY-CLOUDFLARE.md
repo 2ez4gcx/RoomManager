@@ -179,6 +179,41 @@ room-manager → Settings → Trigger Events**, phải thấy đúng lịch này
 Không cần chờ tới sáng mai mới biết chạy đúng hay không: mở trang **Nhắc nợ**
 rồi bấm *Rà lại ngay*, nó gọi cùng một hàm mà cron gọi.
 
+## 7c. Bản demo cho khách xem
+
+Muốn có một địa chỉ gửi khách xem thử, dựng **một D1 riêng** cho demo, đừng
+dùng chung với cơ sở dữ liệu thật:
+
+```bash
+npx wrangler d1 create room-manager-demo
+```
+
+Build và deploy với mã đó (mục 3–6), rồi nạp dữ liệu mẫu:
+
+```bash
+npm run demo:sql
+npx wrangler d1 execute room-manager-demo --remote --file=demo-du-lieu-mau.sql
+```
+
+`npm run demo:sql` dựng dữ liệu mẫu trong một thư mục tạm bằng chính mã của ứng
+dụng rồi xuất ra SQL — không cần mở route dựng dữ liệu ra Internet. Kết quả 22
+bảng, khoảng 470 dòng: 2 nhà, 40 phòng, 32 hợp đồng, 32 đơn thu.
+
+Hoặc bấm chạy từ GitHub: tab **Actions → Deploy bản demo → Run workflow**, tích
+ô *nạp dữ liệu mẫu*. Cần đặt trước `CLOUDFLARE_API_TOKEN` và
+`CLOUDFLARE_ACCOUNT_ID` trong Secrets, `CF_D1_DATABASE_ID` trong Variables.
+
+### Ba điều phải biết về bản demo
+
+1. **Ai có địa chỉ là vào được.** Tài khoản `quanly@hoangan.vn` /
+   `roommanager` có mật khẩu nằm công khai trong mã nguồn. Đó là chủ ý — khách
+   cần đăng nhập để xem — nhưng nghĩa là địa chỉ demo coi như công khai.
+2. **Tuyệt đối không nhập số liệu thật vào bản demo**, kể cả để "thử cho giống
+   thật". Tên và số điện thoại khách thuê là thông tin cá nhân.
+3. **Xóa khi không cần nữa:** `npx wrangler d1 delete room-manager-demo` và xóa
+   Worker trong bảng điều khiển. Bản demo bỏ quên là một cơ sở dữ liệu mở trên
+   Internet không ai trông.
+
 ## 8. Tên miền riêng
 
 *Chưa kiểm chứng — cần tài khoản Cloudflare có tên miền.*

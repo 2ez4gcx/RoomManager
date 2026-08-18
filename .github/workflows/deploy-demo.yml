@@ -1,0 +1,91 @@
+# Đưa một bản DEMO lên Cloudflare Workers, chạy khi bấm tay.
+#
+# Cố ý KHÔNG chạy theo push: deploy là quyết định của người, không phải hệ quả
+# của việc sửa một dòng mã.
+#
+# Cần hai secret trong Settings -> Secrets and variables -> Actions:
+#   CLOUDFLARE_API_TOKEN   token có quyền "Edit Cloudflare Workers"
+#   CLOUDFLARE_ACCOUNT_ID  mã tài khoản, xem ở góc phải bảng điều khiển
+#
+# Và một biến (Variables, không phải Secrets):
+#   CF_D1_DATABASE_ID      mã D1 do `wrangler d1 create` in ra
+name: Deploy bản demo
+
+on:
+  workflow_dispatch:
+    inputs:
+      ten_d1:
+        description: "Tên cơ sở dữ liệu D1 của bản demo"
+        required: true
+        default: "room-manager-demo"
+      nap_du_lieu_mau:
+        description: "Nạp lại dữ liệu mẫu (XÓA SẠCH dữ liệu đang có trên bản demo)"
+        type: boolean
+        default: false
+
+jobs:
+  deploy:
+    name: Build, migrate và deploy
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build với thông tin D1 thật
+        env:
+          CF_D1_DATABASE_NAME: ${{ inputs.ten_d1 }}
+          CF_D1_DATABASE_ID: ${{ vars.CF_D1_DATABASE_ID }}
+        run: npm run build
+
+      - name: Dựng bảng trên D1
+        run: npm run deploy:migrate
+
+      - name: Nạp dữ liệu mẫu
+        # Chỉ chạy khi người bấm tích chọn. Dữ liệu mẫu có tài khoản mật khẩu
+        # công khai trong mã nguồn, nên bước này chỉ dành cho bản demo.
+        if: ${{ inputs.nap_du_lieu_mau }}
+        run: |
+          node scripts/tao-sql-demo.mjs demo-du-lieu-mau.sql
+          npx wrangler d1 execute "${{ inputs.ten_d1 }}" --remote \
+            --config dist/server/wrangler.json --file=demo-du-lieu-mau.sql
+
+      - name: Deploy
+        run: npm run deploy
+
+      - name: Lấy địa chỉ vừa deploy
+        id: dia_chi
+        run: |
+          URL=$(npx wrangler deployments list --config dist/server/wrangler.json 2>/dev/null \
+            | grep -oE 'https://[a-z0-9.-]+workers\.dev' | head -1)
+          echo "url=${URL}" >> "$GITHUB_OUTPUT"
+          echo "Địa chỉ: ${URL:-không đọc được, xem bảng điều khiển Cloudflare}"
+
+      - name: Kiểm tra an toàn bản vừa deploy
+        # Cổng chặn cuối: route dựng dữ liệu phải khóa, trang công khai không
+        # được lộ thông tin khách thuê, và mọi CSS/JS phải tải được.
+        if: steps.dia_chi.outputs.url != ''
+        run: npm run kiem-tra-deploy -- "${{ steps.dia_chi.outputs.url }}"
+
+      - name: Tóm tắt
+        run: |
+          {
+            echo "## Bản demo đã lên"
+            echo ""
+            echo "Địa chỉ: ${{ steps.dia_chi.outputs.url }}"
+            echo ""
+            echo "Đăng nhập: \`quanly@hoangan.vn\` / \`roommanager\`"
+            echo ""
+            echo "> Mật khẩu này nằm công khai trong mã nguồn. Ai có địa chỉ là"
+            echo "> vào được. Chỉ dùng cho demo, tuyệt đối không nhập số liệu thật."
+          } >> "$GITHUB_STEP_SUMMARY"

@@ -48,3 +48,4 @@ yarn-error.log*
 
 # Goi ban giao do dong-goi.bat sinh ra
 RoomManager-*.zip
+demo-du-lieu-mau.sql

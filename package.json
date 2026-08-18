@@ -20,7 +20,8 @@
     "deploy:migrate": "wrangler d1 migrations apply DB --remote --config dist/server/wrangler.json",
     "deploy": "wrangler deploy",
     "kiem-tra-deploy": "node scripts/kiem-tra-sau-deploy.mjs",
-    "server:khoi-tao": "node scripts/chay-server.mjs --khoi-tao"
+    "server:khoi-tao": "node scripts/chay-server.mjs --khoi-tao",
+    "demo:sql": "node scripts/tao-sql-demo.mjs"
   },
   "dependencies": {
     "cross-env": "^10.1.0",
