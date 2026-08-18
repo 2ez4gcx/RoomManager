@@ -26,8 +26,13 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          # Khớp với "engines": { "node": ">=22.13.0" } trong package.json.
-          node-version: "22.13"
+          # Phải khớp Node ở máy phát triển, không phải mức tối thiểu trong
+          # "engines". Node 22 kèm npm 10, Node 24 kèm npm 11, và hai bản npm
+          # này xử lý peer dependency khác nhau: lock do npm 11 sinh ra có một
+          # peer @cloudflare/workers-types@^5 không được cài (từ wrangler lồng
+          # trong @cloudflare/vite-plugin); npm 11 bỏ qua, npm 10 coi là thiếu
+          # trong lock và npm ci thất bại.
+          node-version: "24"
           cache: npm
 
       - name: Cài thư viện
@@ -54,7 +59,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: "22.13"
+          node-version: "24"
           cache: npm
 
       - run: npm ci
