@@ -201,7 +201,7 @@ export function RoomsClient({ rooms, properties, roomTypes, currentUser }: Props
               <thead>
                 <tr>
                   <th>Phòng</th><th>Nhà</th><th>Loại phòng</th><th>Khách thuê</th>
-                  <th>Giá thuê</th><th>Công nợ</th><th>Trạng thái</th>
+                  <th className="money">Giá thuê</th><th className="money">Công nợ</th><th>Trạng thái</th>
                 </tr>
               </thead>
               <tbody>
@@ -211,8 +211,8 @@ export function RoomsClient({ rooms, properties, roomTypes, currentUser }: Props
                     <td>{room.propertyName}</td>
                     <td>{room.roomTypeName} · {room.area}m²</td>
                     <td>{room.tenantName ?? "—"}</td>
-                    <td>{money.format(room.price)}đ</td>
-                    <td className={room.outstanding > 0 ? "debt" : "paid"}>
+                    <td className="money">{money.format(room.price)}đ</td>
+                    <td className={`money ${room.outstanding > 0 ? "debt" : "paid"}`}>
                       {room.outstanding > 0 ? `${money.format(room.outstanding)}đ` : "—"}
                     </td>
                     <td><StatusBadge tone={tones[room.status]}>{room.status}</StatusBadge></td>

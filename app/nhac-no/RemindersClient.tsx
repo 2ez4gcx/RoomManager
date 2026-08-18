@@ -217,7 +217,7 @@ export function RemindersClient({
               <thead>
                 <tr>
                   <th>Ngày</th><th>Khách thuê</th><th>Phòng</th>
-                  <th>Mốc</th><th>Số tiền</th><th>Kênh</th>
+                  <th>Mốc</th><th className="money">Số tiền</th><th>Kênh</th>
                 </tr>
               </thead>
               <tbody>
@@ -227,7 +227,7 @@ export function RemindersClient({
                     <td>{item.tenantName}</td>
                     <td>{item.roomCode}</td>
                     <td>{item.kindLabel}</td>
-                    <td>{money.format(item.amount)}đ</td>
+                    <td className="money">{money.format(item.amount)}đ</td>
                     <td>{CHANNELS.find((c) => c.value === item.channel)?.label ?? item.channel}</td>
                   </tr>
                 ))}

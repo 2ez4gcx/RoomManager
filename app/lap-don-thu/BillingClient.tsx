@@ -229,9 +229,9 @@ export function BillingClient({
             <thead>
               <tr>
                 <th>Phòng</th><th>Khách thuê</th>
-                <th>Chỉ số cũ</th><th>Chỉ số mới</th><th>kWh</th><th>Tiền điện</th>
-                <th>Người</th><th>Tiền nước</th><th>Tiền phòng</th>
-                <th>Tổng đơn</th><th>Hạn</th>
+                <th className="money">Chỉ số cũ</th><th className="money">Chỉ số mới</th><th className="money">kWh</th><th className="money">Tiền điện</th>
+                <th className="money">Người</th><th className="money">Tiền nước</th><th className="money">Tiền phòng</th>
+                <th className="money">Tổng đơn</th><th>Hạn</th>
               </tr>
             </thead>
             <tbody>
@@ -253,8 +253,8 @@ export function BillingClient({
                         </small>
                       )}
                     </td>
-                    <td>{entry.row.previousReading}</td>
-                    <td>
+                    <td className="money">{entry.row.previousReading}</td>
+                    <td className="money">
                       <input
                         type="number"
                         min={entry.row.previousReading}
@@ -267,15 +267,16 @@ export function BillingClient({
                         }
                       />
                     </td>
-                    <td className={entry.invalid ? "debt" : ""}>
+                    <td className={`money ${entry.invalid ? "debt" : ""}`}>
                       {entry.invalid ? "sai" : entry.kwh}
                     </td>
-                    <td>{money.format(entry.electricity)}đ</td>
-                    <td>
+                    <td className="money">{money.format(entry.electricity)}đ</td>
+                    <td className="money">
                       <input
                         type="number"
                         min={0}
                         disabled={issued}
+                        className="input-hep"
                         value={draft.occupants}
                         placeholder={String(entry.row.occupants)}
                         onChange={(event) =>
@@ -283,8 +284,8 @@ export function BillingClient({
                         }
                       />
                     </td>
-                    <td>{money.format(entry.water)}đ</td>
-                    <td>
+                    <td className="money">{money.format(entry.water)}đ</td>
+                    <td className="money">
                       <input
                         type="number"
                         min={0}
@@ -297,7 +298,7 @@ export function BillingClient({
                       />
                       {entry.row.rentNote && <small className="cell-sub">{entry.row.rentNote}</small>}
                     </td>
-                    <td><strong>{money.format(entry.total)}đ</strong></td>
+                    <td className="money"><strong>{money.format(entry.total)}đ</strong></td>
                     <td>{formatDate(entry.row.dueDate)}</td>
                   </tr>
                 );

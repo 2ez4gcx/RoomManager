@@ -115,7 +115,7 @@ export function TenantsClient({
             <thead>
               <tr>
                 <th>Khách thuê</th><th>Liên hệ</th><th>Phòng</th>
-                <th>Thời hạn hợp đồng</th><th>Công nợ</th><th>Trạng thái</th><th />
+                <th>Thời hạn hợp đồng</th><th className="money">Công nợ</th><th>Trạng thái</th><th />
               </tr>
             </thead>
             <tbody>
@@ -133,7 +133,7 @@ export function TenantsClient({
                     <small className="cell-sub">{tenant.propertyName ?? ""}</small>
                   </td>
                   <td>{tenant.startDate ? `${formatDate(tenant.startDate)} — ${formatDate(tenant.endDate)}` : "—"}</td>
-                  <td className={tenant.debt ? "debt" : "paid"}>
+                  <td className={`money ${tenant.debt ? "debt" : "paid"}`}>
                     {tenant.debt ? `${money.format(tenant.debt)}đ` : "Không nợ"}
                   </td>
                   <td><StatusBadge tone={tones[tenant.status]}>{tenant.status}</StatusBadge></td>
