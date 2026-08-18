@@ -148,7 +148,8 @@ export function InvoicesClient({
             <thead>
               <tr>
                 <th>Mã đơn</th><th>Phòng & khách thuê</th><th>Kỳ thu</th>
-                <th>Tổng đơn</th><th>Đã thu</th><th>Còn nợ</th><th>Trạng thái</th><th />
+                <th className="money">Tổng đơn</th><th className="money">Đã thu</th>
+                <th className="money">Còn nợ</th><th>Trạng thái</th><th />
               </tr>
             </thead>
             <tbody>
@@ -157,9 +158,11 @@ export function InvoicesClient({
                   <td><strong>{invoice.code}</strong><small className="cell-sub">Hạn {formatDate(invoice.dueDate)}</small></td>
                   <td><strong>{invoice.roomCode}</strong><small className="cell-sub">{invoice.tenantName}</small></td>
                   <td>{periodLabel(invoice.period)}</td>
-                  <td><strong>{money.format(invoice.total)}đ</strong></td>
-                  <td>{money.format(invoice.paidAmount)}đ</td>
-                  <td className={invoice.outstanding > 0 ? "debt" : "paid"}>{money.format(invoice.outstanding)}đ</td>
+                  <td className="money"><strong>{money.format(invoice.total)}đ</strong></td>
+                  <td className="money">{money.format(invoice.paidAmount)}đ</td>
+                  <td className={`money ${invoice.outstanding > 0 ? "debt" : "paid"}`}>
+                    {money.format(invoice.outstanding)}đ
+                  </td>
                   <td><StatusBadge tone={tone(invoice.statusLabel)}>{invoice.statusLabel}</StatusBadge></td>
                   <td><button className="icon-button" aria-label="Thao tác khác"><MoreHorizontal size={17} /></button></td>
                 </tr>

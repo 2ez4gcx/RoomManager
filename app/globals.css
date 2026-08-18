@@ -372,8 +372,20 @@ input:disabled, select:disabled { background: #f4f2ec; color: #8b938f; cursor: n
 
 /* Cỡ chữ gốc của khu quản trị. Các con số dưới đây đều là mức cũ cộng
    1–2px — đủ dễ đọc trên màn hình lớn mà không phá bố cục lưới. */
+/* Thang cỡ chữ của bảng dữ liệu — ba mức, không hơn.
+   Trước đây một dòng có tới bốn cỡ (8/10/11/13px) và lệch một cách vô lý:
+   ba cột tiền cạnh nhau ở ba cỡ khác nhau, cột "Tổng đơn" lại nhỏ nhất. Gốc
+   là `.data-table td strong` bị ghim 10px trong khi ô cha đã lên 13px, nên
+   chữ trong <strong> đứng yên còn chữ thường nhảy lên.
+
+   13px  dữ liệu chính: mã đơn, phòng, mọi cột tiền
+   11px  dòng phụ dưới ô và nhãn trạng thái: hạn, tên khách
+   10px  tiêu đề cột (chữ hoa, giãn ký tự) */
 .data-table th { font-size: 10px; }
 .data-table td { font-size: 13px; }
+.data-table td strong { font-size: inherit; }
+.data-table td small,
+.data-table td .cell-sub { font-size: 11px; }
 .nav-item { font-size: 14px; }
 .nav-label { font-size: 11px; }
 .sidebar-card p { font-size: 14px; }
@@ -397,6 +409,15 @@ input:disabled, select:disabled { background: #f4f2ec; color: #8b938f; cursor: n
 
 /* Phòng chưa có khách: trạng thái tô nhạt để quét mắt qua là thấy ngay
    phòng nào đang trống, không phải đọc từng chữ. */
+/* Cột tiền căn phải: chữ số thẳng hàng thì liếc qua là so được độ lớn,
+   không phải đọc từng số. Bảng tiền căn trái là chỗ mắt phải làm việc thừa. */
+.data-table td.money,
+.data-table th.money { text-align: right; }
+
+/* Tên khách thuê đậm hơn một chút: khi đi đòi nợ, người ta gọi cho NGƯỜI,
+   không gọi cho số phòng, mà trước đây tên là chữ nhạt nhất trong dòng. */
+.data-table td .cell-sub { color: #7c847f; }
+
 .badge-pale {
   color: #8a938e;
   background: #f4f2ec;
