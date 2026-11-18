@@ -201,7 +201,15 @@ bảng, khoảng 470 dòng: 2 nhà, 40 phòng, 32 hợp đồng, 32 đơn thu.
 
 Hoặc bấm chạy từ GitHub: tab **Actions → Deploy bản demo → Run workflow**, tích
 ô *nạp dữ liệu mẫu*. Cần đặt trước `CLOUDFLARE_API_TOKEN` và
-`CLOUDFLARE_ACCOUNT_ID` trong Secrets, `CF_D1_DATABASE_ID` trong Variables.
+`CLOUDFLARE_ACCOUNT_ID` trong Secrets, và `CF_D1_DEMO_DATABASE_ID` trong
+Variables — **mã D1 của bản demo**, không phải mã của cơ sở dữ liệu thật.
+
+Workflow tự chặn ba chỗ để bản demo không đụng tới bản thật trên cùng tài
+khoản: Worker được deploy dưới tên `room-manager-demo` (không ghi đè Worker
+`room-manager`), tên D1 phải kết thúc bằng `-demo`, và bước nạp dữ liệu mẫu —
+vốn xóa sạch mọi bảng — dừng lại nếu cơ sở dữ liệu có tài khoản nào khác tài
+khoản mẫu. Khi tự deploy demo bằng tay, đặt `CF_WORKER_NAME=room-manager-demo`
+lúc build vì cùng lý do.
 
 ### Ba điều phải biết về bản demo
 
@@ -242,6 +250,8 @@ Thêm một bản sao lưu nằm ngoài Cloudflare, chạy hàng tuần:
 
 ```bash
 npx wrangler d1 export room-manager --remote --output=backup-$(date +%F).sql
+# File này chứa số CCCD, số điện thoại khách thuê và băm mật khẩu. `.gitignore`
+# đã chặn *.sql ngoài drizzle/, nhưng vẫn nên cất nó ra ngoài thư mục dự án.
 ```
 
 Bản sao lưu chưa từng thử phục hồi thì chưa thể coi là an toàn. Mỗi tháng nên

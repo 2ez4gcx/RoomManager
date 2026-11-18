@@ -98,33 +98,34 @@ IP riêng.
 
 ### Dùng thật
 
-Bắt đầu bằng cơ sở dữ liệu **trống**, không có dữ liệu mẫu và không có tài khoản mẫu.
+Bắt đầu bằng cơ sở dữ liệu **trống**, không có dữ liệu mẫu và không có tài khoản mẫu. Dữ liệu thật nằm ở `.wrangler/state/server`, tách hẳn khỏi cơ sở dữ liệu mẫu mà `start.bat` và `npm run dev` dùng.
 
-Trên Windows, khi server đang chạy: nhấp đúp `khoi-tao-that.bat`. File này xoá sạch cơ sở dữ liệu (gõ `dung that` để xác nhận), rồi hỏi email, họ tên và mật khẩu để tạo tài khoản chủ nhà đầu tiên.
+1. Nhấp đúp `khoi-tao-that.bat` (hoặc `npm run server:khoi-tao`). **Không cần** server đang chạy — nên tắt nó đi. File này tạo cơ sở dữ liệu trống, rồi hỏi email, họ tên và mật khẩu để tạo tài khoản chủ nhà đầu tiên.
+2. Nhấp đúp `chay-server.bat` để chạy hằng ngày.
 
-Làm thủ công thì hai bước:
-
-```bash
-curl -X POST "http://localhost:3000/api/dev/setup?empty=true"
-```
+Chạy `khoi-tao-that.bat` lần thứ hai thì nó **dừng lại** nếu cơ sở dữ liệu đã có tài khoản, để không ai xóa nhầm số liệu thật. Muốn xóa hết làm lại từ đầu phải gõ rõ:
 
 ```bash
-curl -X POST http://localhost:3000/api/dev/create-owner   -H "content-type: application/json"   -d "{\"email\":\"email@cua-ban.vn\",\"fullName\":\"Họ Tên\",\"password\":\"mật khẩu ít nhất 8 ký tự\"}"
+node scripts/chay-server.mjs --khoi-tao --xoa-du-lieu-cu
 ```
 
-Route `create-owner` chỉ chạy khi cơ sở dữ liệu **chưa có tài khoản nào**; từ tài khoản thứ hai trở đi thì tạo ở trang **Tài khoản**.
+Lệnh đó sao lưu dữ liệu cũ sang thư mục bên cạnh (`.wrangler/state/server-sao-luu-...`) rồi mới xóa.
 
-Trên Cloudflare thì khác — dùng `npm run create-owner`, xem [docs/DEPLOY-CLOUDFLARE.md](docs/DEPLOY-CLOUDFLARE.md).
+Từ tài khoản thứ hai trở đi thì tạo ở trang **Tài khoản**. Sau khi đăng nhập lần đầu: bật **xác thực hai bước** và tạo thêm **một tài khoản chủ nhà thứ hai** để phòng khi quên mật khẩu.
 
-Đừng chạy lệnh `wrangler d1 execute --local` mà script đó in ra. Wrangler và `npm run dev` **có lúc** dùng chung file SQLite, có lúc không — tên file do Miniflare băm ra từ cấu hình mà mỗi bên được khởi động cùng, nên nếu server đang chạy với cấu hình cũ hơn `dist/server/wrangler.json` thì hai bên rẽ sang hai cơ sở dữ liệu khác nhau. Đã gặp cả hai trường hợp trên cùng một máy. Hỏng thì hỏng âm thầm: lệnh báo thành công, tài khoản nằm trong file kia, đăng nhập báo sai mật khẩu. Đường qua `khoi-tao-that.bat` không có rủi ro đó vì nó nói chuyện với chính tiến trình đang phục vụ trình duyệt.
+**Đừng** nhập dữ liệu thật vào bản chạy bằng `start.bat` hay `npm run dev`: ở đó nhóm route `/api/dev/` đang mở, và `reset-data.bat` / `npm run db:reset` xóa sạch rồi nạp lại dữ liệu mẫu. Hai lệnh đó không đụng tới `.wrangler/state/server`, nên với dữ liệu thật của chế độ server thì chúng vô hại.
 
-Sau khi đăng nhập lần đầu: đổi mật khẩu ở trang **Cài đặt** (mật khẩu vừa gõ đang nằm trong lịch sử lệnh của terminal), bật **xác thực hai bước**, và tạo thêm **một tài khoản chủ nhà thứ hai** để phòng khi quên mật khẩu.
+Trên Cloudflare thì khác — dùng `npm run create-owner`, xem [docs/DEPLOY-CLOUDFLARE.md](docs/DEPLOY-CLOUDFLARE.md). Đừng dùng lệnh `wrangler d1 execute --local` mà script đó in ra cho chế độ server ở máy: wrangler ghi vào một file SQLite khác với file server đang dùng, lệnh báo thành công nhưng tài khoản không xuất hiện.
 
-Từ lúc này, **đừng chạy `reset-data.bat` hay `npm run db:reset` nữa** — chúng xóa sạch dữ liệu thật rồi thay bằng dữ liệu mẫu, không hoàn tác được.
+#### Cập nhật bản mới
 
-> **Chạy thật trên máy local là tạm bợ.** Dữ liệu nằm trong `.wrangler/state`, không có sao lưu, không có HTTPS, và máy tắt là mất truy cập. Dùng lâu dài thì đưa lên Cloudflare — xem [docs/DEPLOY-CLOUDFLARE.md](docs/DEPLOY-CLOUDFLARE.md), ở đó D1 có Time Travel giữ 30 ngày.
+Tải mã nguồn mới về đè lên thư mục cũ (giữ nguyên `.wrangler/`), rồi chạy `chay-server.bat` như thường. Nếu bản mới có thay đổi cấu trúc dữ liệu, server tự sao lưu thư mục dữ liệu sang `.wrangler/state/server-sao-luu-...` rồi mới cập nhật, trước khi mở cổng.
 
-Route `/api/dev/setup` mặc định bị khóa ngoài môi trường dev; bản build production chỉ mở khi khai báo `ALLOW_DEV_SETUP=true`.
+#### Sao lưu
+
+Thư mục cần sao lưu là `.wrangler/state/server`. Tắt server, chép nguyên thư mục đó sang ổ khác hoặc lên đám mây. Chạy trên máy local không có sao lưu tự động hằng ngày, không có HTTPS, và máy tắt là mất truy cập; dùng lâu dài thì cân nhắc đưa lên Cloudflare — xem [docs/DEPLOY-CLOUDFLARE.md](docs/DEPLOY-CLOUDFLARE.md).
+
+Route `/api/dev/setup` mặc định bị khóa ngoài môi trường dev; bản build production chỉ mở khi khai báo `ALLOW_DEV_SETUP=true` — đừng bao giờ đặt biến đó trên bản chạy thật.
 
 ## Kiểm tra
 
@@ -216,3 +217,21 @@ Trước khi đưa lên môi trường thật:
 - Kiểm tra tài khoản mẫu không đăng nhập được trên môi trường thật.
 - Không commit `.env` (đang nằm trong `.gitignore`).
 - Đảm bảo `ALLOW_DEV_SETUP` không được đặt trên môi trường thật — biến này mở route xóa sạch cơ sở dữ liệu.
+
+## Trách nhiệm khi sử dụng
+
+Phần mềm được chia sẻ nguyên trạng, **không kèm bảo hành nào** (xem giấy phép). Trước khi nhập dữ liệu thật, cần biết:
+
+- **Bạn là người chịu trách nhiệm về dữ liệu cá nhân của khách thuê** (họ tên, số điện thoại, số CCCD, công nợ) theo quy định về bảo vệ dữ liệu cá nhân của Việt Nam: chỉ thu thập khi khách đồng ý, giới hạn người được xem, xóa khi không còn cần, và tự lo sao lưu.
+- **Đây là sổ theo dõi, không phải phần mềm kế toán**, không xuất hóa đơn điện tử, không khai thuế, không đăng ký tạm trú. Phần mềm không đụng tới tiền thật: nó chỉ ghi lại con số bạn nhập.
+- **Luôn đối chiếu con số** với sổ sách của bạn, nhất là tiền điện nước và tiền cọc. Tác giả không chịu trách nhiệm về mất dữ liệu hay số liệu sai.
+- **Chế độ mạng nội bộ không có HTTPS**: mật khẩu đi qua wifi ở dạng chữ thường. Chỉ dùng trong mạng bạn tin tưởng.
+- Tài khoản mẫu `quanly@hoangan.vn` / `roommanager` có mật khẩu công khai. Không bao giờ để nó tồn tại trên bản chạy với dữ liệu thật.
+
+## Báo lỗi bảo mật
+
+Xem [SECURITY.md](SECURITY.md).
+
+## Giấy phép
+
+[MIT](LICENSE).
