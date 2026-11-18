@@ -18,6 +18,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { Miniflare } from "miniflare";
+import { randomBytes } from "node:crypto";
 
 const goc = fileURLToPath(new URL("..", import.meta.url));
 const thuMucBuild = path.join(goc, "dist", "server");
@@ -61,6 +62,9 @@ function giaTri(v) {
 }
 
 const thuMucTam = await mkdtemp(path.join(tmpdir(), "roommanager-demo-"));
+// Route dựng dữ liệu cần cả công tắc lẫn token; sinh token riêng cho lần chạy này.
+const tokenDev = randomBytes(24).toString("hex");
+
 const mf = new Miniflare({
   modulesRoot: thuMucBuild,
   modules: await nạpModule(),
@@ -68,13 +72,16 @@ const mf = new Miniflare({
   compatibilityFlags: ["nodejs_compat"],
   d1Databases: { DB: "room-manager" },
   d1Persist: thuMucTam,
-  bindings: { ALLOW_DEV_SETUP: "true" },
+  bindings: { ALLOW_DEV_SETUP: "true", DEV_SETUP_TOKEN: tokenDev },
   serviceBindings: { ASSETS: () => new Response("Not found", { status: 404 }) },
 });
 
 try {
   await mf.ready;
-  const res = await mf.dispatchFetch("http://demo/api/dev/setup?reset=true", { method: "POST" });
+  const res = await mf.dispatchFetch("http://demo/api/dev/setup?reset=true", {
+    method: "POST",
+    headers: { "x-dev-setup-token": tokenDev },
+  });
   const kq = await res.json();
   if (!res.ok || !kq.seeded) throw new Error(`Nạp dữ liệu mẫu thất bại: ${JSON.stringify(kq)}`);
   console.log(`  Đã dựng dữ liệu mẫu: ${JSON.stringify(kq.counts)}`);

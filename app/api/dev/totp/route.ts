@@ -15,7 +15,7 @@ const RFC_SECRET = toBase32(new TextEncoder().encode("12345678901234567890"));
 const RFC_TIMES = [59, 1111111109, 1234567890, 2000000000];
 
 export async function GET(request: Request) {
-  if (!isDevSetupEnabled()) return devSetupLocked();
+  if (!isDevSetupEnabled(request)) return devSetupLocked();
 
   const params = new URL(request.url).searchParams;
 

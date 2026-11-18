@@ -22,7 +22,7 @@ import { toErrorResponse } from "../../../lib/api";
 import { devSetupLocked, isDevSetupEnabled } from "../../../lib/dev-setup";
 
 export async function POST(request: Request) {
-  if (!isDevSetupEnabled()) return devSetupLocked();
+  if (!isDevSetupEnabled(request)) return devSetupLocked();
 
   try {
     const db = getDb();

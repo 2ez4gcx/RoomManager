@@ -27,7 +27,7 @@ export async function GET(request: Request) {
         name: `Thu chi ${period}`,
         columns: [
           { header: "Mã", width: 12 },
-          { header: "Ngày", width: 12 },
+          { header: "Ngày", width: 12, date: true },
           { header: "Loại", width: 10 },
           { header: "Nhóm", width: 20 },
           { header: "Nội dung", width: 40 },
@@ -48,8 +48,30 @@ export async function GET(request: Request) {
           ]),
           // Dòng tổng ở cuối, đúng chỗ người xem tìm.
           [],
-          ["", "", "", "TỔNG", "", "", summary.income, summary.expense],
-          ["", "", "", "DÒNG TIỀN THUẦN", "", "", summary.net, null],
+          ["", "", "", "THU CHI VẬN HÀNH", "", "", summary.income, summary.expense],
+          ["", "", "", "LÃI VẬN HÀNH", "", "", summary.net, null],
+          // Cọc là tiền giữ hộ khách, tách khỏi thu chi vận hành.
+          ["", "", "", "TIỀN CỌC (thu / hoàn)", "", "", summary.depositsIn, summary.depositsOut],
+          [
+            "",
+            "",
+            "",
+            "TỔNG",
+            "",
+            "",
+            summary.income + summary.depositsIn,
+            summary.expense + summary.depositsOut,
+          ],
+          [
+            "",
+            "",
+            "",
+            "DÒNG TIỀN THUẦN",
+            "",
+            "",
+            summary.net + summary.depositsIn - summary.depositsOut,
+            null,
+          ],
         ],
       },
       {

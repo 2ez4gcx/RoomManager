@@ -8,6 +8,7 @@ import { formatMillions, formatShortDate, money, recentPeriods, todayVietnam } f
 import type { SessionUser } from "../../db/auth";
 import type { LedgerView, PropertyOption } from "../../db/queries";
 import type { CashflowSummary } from "../../db/queries-extra";
+import { MoneyInput } from "../components/MoneyInput";
 
 const CATEGORIES = {
   in: ["Tiền phòng", "Tiền cọc", "Phí dịch vụ", "Khác"],
@@ -80,21 +81,27 @@ export function CashflowClient({
         <section className="summary-cards three">
           <article>
             <span className="summary-icon green"><ArrowDownLeft size={20} /></span>
-            <div><small>Tổng thu</small><strong>{formatMillions(summary.income)}</strong><p>{periodLabel(period)}</p></div>
+            <div><small>Thu vận hành</small><strong>{formatMillions(summary.income)}</strong><p>{periodLabel(period)}</p></div>
           </article>
           <article>
             <span className="summary-icon red"><ArrowUpRight size={20} /></span>
             <div>
-              <small>Tổng chi</small>
+              <small>Chi vận hành</small>
               <strong>{formatMillions(summary.expense)}</strong>
-              <p>{summary.income ? Math.round((summary.expense / summary.income) * 100) : 0}% tổng thu</p>
+              <p>{summary.income ? Math.round((summary.expense / summary.income) * 100) : 0}% thu vận hành</p>
             </div>
           </article>
           <article className="featured-summary">
             <span className="summary-icon"><TrendingUp size={20} /></span>
-            <div><small>Dòng tiền thuần</small><strong>{formatMillions(summary.net)}</strong><p>Biên vận hành {summary.margin}%</p></div>
+            <div><small>Lãi vận hành</small><strong>{formatMillions(summary.net)}</strong><p>Biên vận hành {summary.margin}%</p></div>
           </article>
         </section>
+
+        <p className="modal-hint">
+          Ba con số trên không gồm tiền cọc, vì cọc là tiền giữ hộ khách chứ không phải doanh
+          thu hay chi phí. Trong {periodLabel(period).toLowerCase()}: thu cọc{" "}
+          {money.format(summary.depositsIn)}đ, hoàn cọc {money.format(summary.depositsOut)}đ.
+        </p>
 
         <section className="cashflow-grid">
           <article className="panel chart-panel">
@@ -256,7 +263,7 @@ function AddEntryModal({
         </div>
         <label>
           Số tiền
-          <div className="money-input"><input name="amount" type="number" min={1} required placeholder="0" /><span>VNĐ</span></div>
+          <div className="money-input"><MoneyInput name="amount" required placeholder="0" /><span>VNĐ</span></div>
         </label>
         <div className="form-grid">
           <label>Nội dung<input name="description" placeholder="Mô tả giao dịch" /></label>

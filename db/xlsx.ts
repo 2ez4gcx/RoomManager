@@ -19,6 +19,11 @@ export type SheetColumn = {
   width?: number;
   /** Định dạng số có phân cách hàng nghìn. Dùng cho cột tiền. */
   money?: boolean;
+  /**
+   * Cột ngày: giá trị `YYYY-MM-DD` được ghi thành ngày thật của Excel, để sắp
+   * xếp và lọc theo ngày được. Giá trị không đúng dạng thì ghi như chữ.
+   */
+  date?: boolean;
 };
 
 export type Sheet = {
@@ -30,6 +35,15 @@ export type Sheet = {
 const STYLE_DEFAULT = 0;
 const STYLE_HEADER = 1;
 const STYLE_MONEY = 2;
+const STYLE_DATE = 3;
+
+/** `2026-11-18` → số ngày tính từ mốc 30/12/1899 mà Excel dùng. */
+function excelSerialDate(value: unknown) {
+  if (typeof value !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const time = Date.parse(`${value}T00:00:00Z`);
+  if (Number.isNaN(time)) return null;
+  return Math.round((time - Date.UTC(1899, 11, 30)) / 86_400_000);
+}
 
 function escapeXml(value: string) {
   // XML 1.0 cấm hầu hết ký tự điều khiển, kể cả khi đã thoát. Một ký tự như
@@ -91,13 +105,12 @@ function sheetXml(sheet: Sheet) {
   const body = sheet.rows
     .map((row, rowIndex) => {
       const cells = sheet.columns
-        .map((column, columnIndex) =>
-          cellXml(
-            row[columnIndex],
-            `${columnName(columnIndex)}${rowIndex + 2}`,
-            column.money ? STYLE_MONEY : STYLE_DEFAULT,
-          ),
-        )
+        .map((column, columnIndex) => {
+          const reference = `${columnName(columnIndex)}${rowIndex + 2}`;
+          const serial = column.date ? excelSerialDate(row[columnIndex]) : null;
+          if (serial !== null) return cellXml(serial, reference, STYLE_DATE);
+          return cellXml(row[columnIndex], reference, column.money ? STYLE_MONEY : STYLE_DEFAULT);
+        })
         .join("");
       return `<row r="${rowIndex + 2}">${cells}</row>`;
     })
@@ -109,15 +122,15 @@ function sheetXml(sheet: Sheet) {
   }<sheetData><row r="1">${header}</row>${body}</sheetData></worksheet>`;
 }
 
-/** Định dạng: dòng tiêu đề in đậm nền xám, cột tiền có phân cách hàng nghìn. */
+/** Định dạng: dòng tiêu đề in đậm nền xám, cột tiền có phân cách hàng nghìn, cột ngày dd/mm/yyyy. */
 const STYLES_XML = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
-<numFmts count="1"><numFmt numFmtId="164" formatCode="#,##0"/></numFmts>
+<numFmts count="2"><numFmt numFmtId="164" formatCode="#,##0"/><numFmt numFmtId="165" formatCode="dd/mm/yyyy"/></numFmts>
 <fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>
 <fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FFE8E4DC"/><bgColor indexed="64"/></patternFill></fill></fills>
 <borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
 <cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>
-<cellXfs count="3"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs>
+<cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" xfId="0" applyFont="1" applyFill="1"/><xf numFmtId="164" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/><xf numFmtId="165" fontId="0" fillId="0" borderId="0" xfId="0" applyNumberFormat="1"/></cellXfs>
 <cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>
 </styleSheet>`;
 

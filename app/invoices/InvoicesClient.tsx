@@ -10,6 +10,7 @@ import { AppShell, Modal, PageHeader, StatusBadge } from "../components/AppShell
 import { formatDate, formatMillions, money, todayVietnam } from "../lib/format";
 import type { SessionUser } from "../../db/auth";
 import type { InvoiceSummary, InvoiceView } from "../../db/queries-extra";
+import { MoneyInput } from "../components/MoneyInput";
 
 const ALL = "Tất cả trạng thái";
 
@@ -329,7 +330,7 @@ function InvoiceModal({
               <label>
                 Số tiền
                 <div className="money-input">
-                  <input name="amount" type="number" min={1} max={invoice.outstanding} defaultValue={invoice.outstanding} required />
+                  <MoneyInput key={invoice.id} name="amount" defaultValue={invoice.outstanding} required />
                   <span>VNĐ</span>
                 </div>
               </label>

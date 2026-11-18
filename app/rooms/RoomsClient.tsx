@@ -10,6 +10,7 @@ import { AppShell, Modal, PageHeader, StatusBadge } from "../components/AppShell
 import { formatDate, money } from "../lib/format";
 import type { SessionUser } from "../../db/auth";
 import type { PropertyOption, RoomStatus, RoomTypeOption, RoomView } from "../../db/queries";
+import { MoneyInput } from "../components/MoneyInput";
 
 /**
  * Màu trạng thái phòng.
@@ -381,7 +382,7 @@ function AddRoomModal({
           <label>Diện tích<input name="area" type="number" min={0} placeholder="m²" /></label>
           <label>
             Giá thuê
-            <div className="money-input"><input name="price" type="number" min={0} placeholder="Theo loại phòng" /><span>VNĐ</span></div>
+            <div className="money-input"><MoneyInput name="price" placeholder="Theo loại phòng" /><span>VNĐ</span></div>
           </label>
         </div>
         {error && <p className="form-error" role="alert">{error}</p>}
@@ -473,7 +474,7 @@ function AddPropertyModal({
             <label>Tên loại<input name={`${preset.key}Name`} defaultValue={preset.name} /></label>
             <label>
               Giá niêm yết
-              <div className="money-input"><input name={`${preset.key}Price`} type="number" min={0} defaultValue={preset.price} /><span>VNĐ</span></div>
+              <div className="money-input"><MoneyInput name={`${preset.key}Price`} defaultValue={preset.price} /><span>VNĐ</span></div>
             </label>
             <label>Diện tích<input name={`${preset.key}Area`} type="number" min={0} defaultValue={preset.area} /></label>
           </div>
@@ -553,7 +554,7 @@ function AddRoomTypeModal({
         <div className="form-grid">
           <label>
             Giá niêm yết
-            <div className="money-input"><input name="basePrice" type="number" min={1} required placeholder="3.500.000" /><span>VNĐ</span></div>
+            <div className="money-input"><MoneyInput name="basePrice" required placeholder="3.500.000" /><span>VNĐ</span></div>
           </label>
           <label>Diện tích<input name="area" type="number" min={0} placeholder="m²" /></label>
         </div>

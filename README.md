@@ -94,6 +94,8 @@ npm run kiem-tra-deploy -- http://localhost:3000
 
 Không cần cho máy khác truy cập thì chạy `node scripts/chay-server.mjs --chi-may-nay`: server chỉ nhận kết nối từ chính máy này, không mở ra mạng nội bộ.
 
+Muốn có HTTPS (ví dụ để truy cập từ ngoài nhà), đặt một reverse proxy có chứng chỉ — Caddy, nginx hoặc cloudflared — trên cùng máy, trỏ vào `http://127.0.0.1:3000`, rồi chạy `node scripts/chay-server.mjs --sau-proxy`. Ở chế độ này server chỉ nhận kết nối từ chính máy đó, tin các header `X-Forwarded-For`, `X-Forwarded-Proto`, `X-Forwarded-Host` của proxy, và cookie phiên mang cờ `Secure` khi proxy báo `https`. Đừng dùng `--sau-proxy` khi không có proxy đứng trước: các header đó khi ấy do người gọi tự đặt.
+
 Mạng nội bộ không có HTTPS nên mật khẩu đi qua wifi ở dạng chữ thường. Lệnh
 kiểm tra ghi rõ điều này nhưng không coi là lỗi chặn khi địa chỉ nằm trong dải
 IP riêng.
@@ -127,7 +129,7 @@ Tải mã nguồn mới về đè lên thư mục cũ (giữ nguyên `.wrangler/
 
 Thư mục cần sao lưu là `.wrangler/state/server`. Tắt server, chép nguyên thư mục đó sang ổ khác hoặc lên đám mây. Chạy trên máy local không có sao lưu tự động hằng ngày, không có HTTPS, và máy tắt là mất truy cập; dùng lâu dài thì cân nhắc đưa lên Cloudflare — xem [docs/DEPLOY-CLOUDFLARE.md](docs/DEPLOY-CLOUDFLARE.md).
 
-Route `/api/dev/setup` mặc định bị khóa ngoài môi trường dev; bản build production chỉ mở khi khai báo `ALLOW_DEV_SETUP=true` — đừng bao giờ đặt biến đó trên bản chạy thật.
+Nhóm route `/api/dev/` mặc định bị khóa ngoài môi trường dev. Bản build production chỉ mở khi có đủ hai thứ: biến `ALLOW_DEV_SETUP=true`, và biến `DEV_SETUP_TOKEN` (ít nhất 24 ký tự) khớp với header `x-dev-setup-token` của yêu cầu. `chay-server` tự sinh token cho các bước khởi tạo chạy trong tiến trình của nó. Đừng bao giờ đặt `ALLOW_DEV_SETUP` trên bản chạy thật; token chỉ là lớp chặn thứ hai cho trường hợp lỡ tay.
 
 ## Kiểm tra
 

@@ -11,7 +11,7 @@ import { clearAll, isSeeded, seed } from "../../../../db/seed";
 import { devSetupLocked, isDevSetupEnabled } from "../../../lib/dev-setup";
 
 export async function POST(request: Request) {
-  if (!isDevSetupEnabled()) return devSetupLocked();
+  if (!isDevSetupEnabled(request)) return devSetupLocked();
 
   const params = new URL(request.url).searchParams;
   const reset = params.get("reset") === "true";

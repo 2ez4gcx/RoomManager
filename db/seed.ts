@@ -545,7 +545,6 @@ export async function seed(db: Db) {
       { key: "rate.electricity", value: String(electricityPrice) },
       { key: "rate.water", value: String(waterPricePerPerson) },
       { key: "rate.service", value: String(servicePrice) },
-      { key: "rate.parking", value: "100000" },
       { key: "billing.defaultDay", value: "5" },
       { key: "booking.holdDays", value: "3" },
     ].map((row) => ({ ...row, updatedBy: ownerId })),

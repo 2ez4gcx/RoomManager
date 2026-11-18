@@ -7,6 +7,7 @@ import { AppShell, PageHeader, StatusBadge } from "../components/AppShell";
 import { formatDate, formatMillions, money, recentPeriods } from "../lib/format";
 import type { SessionUser } from "../../db/auth";
 import type { BillingPreview } from "../../db/billing";
+import { MoneyInput } from "../components/MoneyInput";
 
 /** Giá trị người dùng gõ vào từng dòng; để chuỗi rỗng nghĩa là chưa nhập. */
 type Draft = { previousReading: string; currentReading: string; occupants: string; rent: string };
@@ -324,9 +325,7 @@ export function BillingClient({
                     </td>
                     <td className="money">{money.format(entry.water)}đ</td>
                     <td className="money">
-                      <input
-                        type="number"
-                        min={0}
+                      <MoneyInput
                         disabled={issued || currentUser.role !== "owner"}
                         title={
                           currentUser.role !== "owner"
@@ -334,10 +333,8 @@ export function BillingClient({
                             : undefined
                         }
                         value={draft.rent}
-                        placeholder={String(entry.row.rent)}
-                        onChange={(event) =>
-                          update(entry.row.contractId, { rent: event.target.value })
-                        }
+                        placeholder={money.format(entry.row.rent)}
+                        onValueChange={(rent) => update(entry.row.contractId, { rent })}
                       />
                       {entry.row.rentNote && <small className="cell-sub">{entry.row.rentNote}</small>}
                     </td>

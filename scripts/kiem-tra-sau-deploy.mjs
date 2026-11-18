@@ -175,7 +175,7 @@ async function kiemTraRouteDungDuLieu() {
   ghi(
     "Nhóm route /api/dev/ bị khóa",
     false,
-    `HTTP ${res.status} — ALLOW_DEV_SETUP đang được đặt. Gỡ ngay: npx wrangler secret delete ALLOW_DEV_SETUP`,
+    `HTTP ${res.status} — ALLOW_DEV_SETUP đang được đặt (chỉ còn DEV_SETUP_TOKEN chặn). Gỡ ngay: npx wrangler secret delete ALLOW_DEV_SETUP`,
   );
 }
 

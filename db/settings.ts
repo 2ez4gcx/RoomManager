@@ -13,7 +13,6 @@ export const SETTING_KEYS = [
   "rate.electricity",
   "rate.water",
   "rate.service",
-  "rate.parking",
   "billing.defaultDay",
   "booking.holdDays",
   "reminder.daysBefore",
@@ -27,7 +26,6 @@ const NUMERIC_KEYS = new Set<string>([
   "rate.electricity",
   "rate.water",
   "rate.service",
-  "rate.parking",
   "billing.defaultDay",
   "booking.holdDays",
   "reminder.daysBefore",
@@ -42,7 +40,6 @@ export const DEFAULT_SETTINGS: Record<SettingKey, string> = {
   "rate.electricity": "3500",
   "rate.water": "100000",
   "rate.service": "150000",
-  "rate.parking": "100000",
   "billing.defaultDay": "5",
   "booking.holdDays": "3",
   /** Nhắc trước hạn bao nhiêu ngày. */

@@ -23,10 +23,14 @@
  *   node scripts/chay-server.mjs --cong 8080     đổi cổng
  *   node scripts/chay-server.mjs --chi-may-nay   chỉ nhận kết nối từ chính máy này,
  *                                                không mở ra mạng nội bộ
+ *   node scripts/chay-server.mjs --sau-proxy     server đứng sau một reverse proxy có
+ *                                                HTTPS (Caddy, nginx, cloudflared): tin
+ *                                                các header X-Forwarded-* của proxy đó,
+ *                                                và chỉ nhận kết nối từ chính máy này
  *   node scripts/chay-server.mjs --du-lieu <thư mục>   đổi nơi chứa dữ liệu
  */
 import { createServer } from "node:http";
-import { createHash } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { cp, readdir, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
 import { networkInterfaces } from "node:os";
@@ -51,6 +55,21 @@ const thamSo = process.argv.slice(2);
 const khoiTao = thamSo.includes("--khoi-tao");
 const datLaiMatKhau = thamSo.includes("--dat-lai-mat-khau");
 const chiMayNay = thamSo.includes("--chi-may-nay");
+const sauProxy = thamSo.includes("--sau-proxy");
+
+/**
+ * Token mở nhóm route `/api/dev/` cho các bước khởi tạo/cập nhật chạy TRONG
+ * tiến trình này. Sinh mới mỗi lần chạy và không in ra đâu cả.
+ */
+const tokenDev = randomBytes(24).toString("hex");
+
+/** Gọi một route `/api/dev/` qua Miniflare không mở cổng, kèm token. */
+function goiDev(mf, duongDan, init = {}) {
+  return mf.dispatchFetch(`http://server${duongDan}`, {
+    ...init,
+    headers: { ...(init.headers ?? {}), "x-dev-setup-token": tokenDev },
+  });
+}
 
 /** Thân yêu cầu lớn nhất được nhận. Biểu mẫu của ứng dụng chỉ vài KB. */
 const KICH_THUOC_THAN_TOI_DA = 2 * 1024 * 1024;
@@ -158,7 +177,7 @@ async function dựngWorker({ moCong }) {
     compatibilityFlags: ["nodejs_compat"],
     d1Databases: { DB: "room-manager" },
     d1Persist: thuMucDuLieu,
-    bindings: moCong ? {} : { ALLOW_DEV_SETUP: "true" },
+    bindings: moCong ? {} : { ALLOW_DEV_SETUP: "true", DEV_SETUP_TOKEN: tokenDev },
     // Miniflare không tự mở cổng: cổng do máy chủ HTTP bên dưới giữ, để tệp
     // tĩnh được phục vụ trước khi worker được gọi.
     serviceBindings: { ASSETS: () => new Response("Not found", { status: 404 }) },
@@ -235,9 +254,7 @@ async function apMigrationNeuCan() {
 
   const mf = await dựngWorker({ moCong: false });
   try {
-    const kq = await mf.dispatchFetch("http://server/api/dev/setup?migrate=true", {
-      method: "POST",
-    });
+    const kq = await goiDev(mf, "/api/dev/setup?migrate=true", { method: "POST" });
     if (!kq.ok) throw new Error(`Cập nhật cấu trúc dữ liệu thất bại: ${await kq.text()}`);
   } finally {
     await mf.dispose();
@@ -381,10 +398,10 @@ if (datLaiMatKhau) {
 
   const mf = await dựngWorker({ moCong: false });
   try {
-    const xoa = await mf.dispatchFetch("http://server/api/dev/setup?empty=true", { method: "POST" });
+    const xoa = await goiDev(mf, "/api/dev/setup?empty=true", { method: "POST" });
     if (!xoa.ok) throw new Error(`Dựng bảng thất bại: ${await xoa.text()}`);
 
-    const tao = await mf.dispatchFetch("http://server/api/dev/create-owner", {
+    const tao = await goiDev(mf, "/api/dev/create-owner", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ email, fullName: hoTen, password: matKhau, phone: dienThoai }),
@@ -470,10 +487,32 @@ if (datLaiMatKhau) {
       // mọi máy trong wifi dùng chung một bộ đếm: một người gõ sai 5 lần là
       // khóa cả nhà. Ghi đè kể cả khi client tự gửi, vì header do client gửi
       // thì client tự đổi được để lách.
-      const ip = (req.socket.remoteAddress ?? "127.0.0.1").replace(/^::ffff:/, "");
+      let ip = (req.socket.remoteAddress ?? "127.0.0.1").replace(/^::ffff:/, "");
+      let giaoThuc = "http";
+      let tenMay = req.headers.host ?? "localhost";
+
+      if (sauProxy) {
+        // Chỉ tin các header này vì chế độ --sau-proxy chỉ nhận kết nối từ
+        // chính máy này, tức là từ proxy. Proxy NỐI THÊM địa chỉ của người gọi
+        // vào cuối X-Forwarded-For, nên phần tử cuối là thứ duy nhất proxy
+        // bảo đảm; các phần tử trước đó do người gọi tự gửi và giả được.
+        const chuoi = String(req.headers["x-forwarded-for"] ?? "");
+        const cuoi = chuoi.split(",").at(-1)?.trim();
+        if (cuoi) ip = cuoi;
+        if (String(req.headers["x-forwarded-proto"] ?? "").split(",")[0].trim() === "https") {
+          giaoThuc = "https";
+        }
+        const tenChuyenTiep = String(req.headers["x-forwarded-host"] ?? "").split(",")[0].trim();
+        if (tenChuyenTiep) {
+          tenMay = tenChuyenTiep;
+          dau.set("host", tenChuyenTiep);
+        }
+      }
       dau.set("cf-connecting-ip", ip);
 
-      const phanHoi = await mf.dispatchFetch(`http://${req.headers.host ?? "localhost"}${req.url}`, {
+      // Giao thức đúng là điều kiện để cookie phiên mang cờ Secure: route đăng
+      // nhập đặt cờ đó khi URL của yêu cầu là https.
+      const phanHoi = await mf.dispatchFetch(`${giaoThuc}://${tenMay}${req.url}`, {
         method: req.method,
         headers: dau,
         body: than,
@@ -497,7 +536,8 @@ if (datLaiMatKhau) {
     }
   });
 
-  await new Promise((ok) => mayChu.listen(cong, chiMayNay ? "127.0.0.1" : "0.0.0.0", ok));
+  const chiNoiBo = chiMayNay || sauProxy;
+  await new Promise((ok) => mayChu.listen(cong, chiNoiBo ? "127.0.0.1" : "0.0.0.0", ok));
 
   /**
    * Rà nhắc nợ mỗi ngày một lần.
@@ -547,10 +587,14 @@ if (datLaiMatKhau) {
   console.log("  ==========================================");
   console.log("");
   console.log(`  Trên máy này:     http://localhost:${cong}`);
-  for (const dc of chiMayNay ? [] : diaChiLan()) {
+  for (const dc of chiNoiBo ? [] : diaChiLan()) {
     console.log(`  Máy khác/điện thoại: http://${dc}:${cong}`);
   }
   console.log("");
+  if (sauProxy) {
+    console.log("  Chế độ sau proxy: tin X-Forwarded-For/-Proto/-Host từ proxy trên máy này.");
+    console.log("  Trỏ proxy HTTPS của bạn vào địa chỉ trên; đừng mở cổng này ra ngoài.");
+  }
   console.log("  Nhóm route /api/dev/ đã khóa (bản build production).");
   console.log(`  Rà nhắc nợ tự động: mỗi ngày sau ${GIO_RA} giờ sáng.`);
   console.log(`  Dữ liệu: ${thuMucDuLieu}`);

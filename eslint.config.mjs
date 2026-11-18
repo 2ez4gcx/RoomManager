@@ -35,6 +35,11 @@ const eslintConfig = defineConfig([
         version: "detect",
       },
     },
+    rules: {
+      // MoneyInput kết xuất ra một <input> thật; khai báo để quy tắc "nhãn
+      // phải gắn với ô nhập" nhận ra nó như một ô nhập.
+      "jsx-a11y/label-has-associated-control": ["error", { controlComponents: ["MoneyInput"] }],
+    },
   },
 ]);
 

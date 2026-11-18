@@ -13,7 +13,7 @@ import { devSetupLocked, isDevSetupEnabled } from "../../../lib/dev-setup";
 
 
 export async function POST(request: Request) {
-  if (!isDevSetupEnabled()) return devSetupLocked();
+  if (!isDevSetupEnabled(request)) return devSetupLocked();
 
   const body = (await request.json()) as { password?: string; hash?: string };
   return Response.json({

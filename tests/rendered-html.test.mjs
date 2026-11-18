@@ -37,19 +37,42 @@ async function collectModules() {
   return files.map((file) => ({ type: "ESModule", path: path.join(distServer, file) }));
 }
 
+/**
+ * Nhóm route `/api/dev/` trong bản build production cần cả `ALLOW_DEV_SETUP`
+ * lẫn một token gửi kèm header. Worker nào bật công tắc thì được cấp token và
+ * mọi yêu cầu gửi qua nó tự mang header đó — trừ khi bài kiểm thử cố ý truyền
+ * `DEV_SETUP_TOKEN` riêng để thử trường hợp thiếu/sai token.
+ */
+const DEV_SETUP_TOKEN = "token-kiem-thu-chi-dung-trong-bo-test-0123456789";
+
 function makeWorker(databaseName, bindings = {}) {
-  return collectModules().then(
-    (modules) =>
-      new Miniflare({
-        modulesRoot: distServer,
-        modules,
-        compatibilityDate: "2026-05-15",
-        compatibilityFlags: ["nodejs_compat"],
-        d1Databases: { DB: databaseName },
-        bindings,
-        serviceBindings: { ASSETS: () => new Response("Not found", { status: 404 }) },
-      }),
-  );
+  const usesDevRoutes = bindings.ALLOW_DEV_SETUP === "true";
+  const finalBindings =
+    usesDevRoutes && bindings.DEV_SETUP_TOKEN === undefined
+      ? { ...bindings, DEV_SETUP_TOKEN }
+      : bindings;
+
+  return collectModules().then((modules) => {
+    const worker = new Miniflare({
+      modulesRoot: distServer,
+      modules,
+      compatibilityDate: "2026-05-15",
+      compatibilityFlags: ["nodejs_compat"],
+      d1Databases: { DB: databaseName },
+      bindings: finalBindings,
+      serviceBindings: { ASSETS: () => new Response("Not found", { status: 404 }) },
+    });
+
+    if (usesDevRoutes) {
+      const raw = worker.dispatchFetch.bind(worker);
+      worker.dispatchFetch = (url, init = {}) =>
+        raw(url, {
+          ...init,
+          headers: { ...(init.headers ?? {}), "x-dev-setup-token": DEV_SETUP_TOKEN },
+        });
+    }
+    return worker;
+  });
 }
 
 let mf;
@@ -327,6 +350,34 @@ test("đường thăm dò /api/dev/status báo đúng trạng thái và không �
     assert.equal(dong.status, 403, "bản production phải báo đã khóa");
   } finally {
     await locked.dispose();
+  }
+});
+
+test("bật ALLOW_DEV_SETUP mà thiếu hoặc sai token thì route dựng dữ liệu vẫn khóa", async () => {
+  // Đây là lớp chặn cho trường hợp lỡ tay đặt ALLOW_DEV_SETUP trên bản thật.
+  const cases = [
+    { name: "không cấu hình token", bindings: { ALLOW_DEV_SETUP: "true", DEV_SETUP_TOKEN: "" } },
+    { name: "token quá ngắn", bindings: { ALLOW_DEV_SETUP: "true", DEV_SETUP_TOKEN: "ngan" } },
+    {
+      name: "token khác với token gửi lên",
+      bindings: { ALLOW_DEV_SETUP: "true", DEV_SETUP_TOKEN: "mot-token-khac-hoan-toan-0123456789abcdef" },
+    },
+  ];
+
+  for (const [index, item] of cases.entries()) {
+    const worker = await makeWorker(`room-manager-token-${index}`, item.bindings);
+    try {
+      const wipe = await worker.dispatchFetch("http://localhost/api/dev/setup?empty=true", {
+        method: "POST",
+      });
+      assert.equal(wipe.status, 403, `${item.name}: route xóa dữ liệu phải khóa`);
+
+      // Trạng thái thì vẫn phải báo công tắc đang bật, để người vận hành gỡ đi.
+      const status = await worker.dispatchFetch("http://localhost/api/dev/status");
+      assert.equal(status.status, 200, `${item.name}: /api/dev/status phải báo công tắc đang bật`);
+    } finally {
+      await worker.dispose();
+    }
   }
 });
 

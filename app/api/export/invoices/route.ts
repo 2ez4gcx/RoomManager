@@ -33,7 +33,7 @@ export async function GET(request: Request) {
           { header: "Nhà", width: 18 },
           { header: "Khách thuê", width: 24 },
           { header: "Kỳ thu", width: 10 },
-          { header: "Hạn thanh toán", width: 14 },
+          { header: "Hạn thanh toán", width: 14, date: true },
           { header: "Tiền phòng", width: 14, money: true },
           { header: "Tiền điện", width: 13, money: true },
           { header: "Tiền nước", width: 13, money: true },

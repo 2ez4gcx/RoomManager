@@ -10,6 +10,7 @@ import { formatDate, initials, money, todayVietnam } from "../lib/format";
 import type { SessionUser } from "../../db/auth";
 import type { RoomView, TenantView } from "../../db/queries";
 import type { MoveOutPreview, MoveOutResult } from "../../db/move-out";
+import { MoneyInput } from "../components/MoneyInput";
 
 const ALL_STATUSES = "Tất cả trạng thái";
 
@@ -274,7 +275,7 @@ function EditTenantModal({
                 <label>
                   Giá thuê mỗi tháng
                   <div className="money-input">
-                    <input name="rent" type="number" min={1} required disabled={!isOwner} defaultValue={tenant.rent} />
+                    <MoneyInput name="rent" required disabled={!isOwner} defaultValue={tenant.rent} />
                     <span>VNĐ</span>
                   </div>
                 </label>
@@ -412,7 +413,7 @@ function AddTenantModal({
           <label>
             Tiền cọc
             <div className="money-input">
-              <input name="deposit" type="number" min={0} defaultValue={activeRoom?.price ?? 0} />
+              <MoneyInput key={activeRoomId} name="deposit" defaultValue={activeRoom?.price ?? 0} />
               <span>VNĐ</span>
             </div>
           </label>
@@ -603,13 +604,7 @@ function MoveOutModal({
             <label>
               Khấu trừ hư hỏng, vệ sinh
               <div className="money-input">
-                <input
-                  type="number"
-                  min={0}
-                  value={deductions}
-                  placeholder="0"
-                  onChange={(event) => setDeductions(event.target.value)}
-                />
+                <MoneyInput value={deductions} placeholder="0" onValueChange={setDeductions} />
                 <span>VNĐ</span>
               </div>
             </label>

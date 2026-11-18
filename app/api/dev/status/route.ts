@@ -9,15 +9,15 @@
  * Trả về 403 khi nhóm route đang đóng, 200 khi đang mở. Không lộ gì: ai gọi
  * được và thấy 200 thì cũng gọi được thẳng route thật.
  */
-import { devSetupLocked, isDevSetupEnabled } from "../../../lib/dev-setup";
+import { devSetupLocked, isDevSetupConfigured } from "../../../lib/dev-setup";
 
 export async function GET() {
-  if (!isDevSetupEnabled()) return devSetupLocked();
+  if (!isDevSetupConfigured()) return devSetupLocked();
 
   return Response.json({
     enabled: true,
     canhBao:
-      "Nhóm route /api/dev/ đang mở. Trên môi trường thật, đây là đường xóa sạch cơ sở dữ liệu.",
+      "ALLOW_DEV_SETUP đang bật. Trên môi trường thật, đây là đường xóa sạch cơ sở dữ liệu; nó chỉ còn được chặn bởi DEV_SETUP_TOKEN. Gỡ biến này đi.",
     routes: [
       "/api/dev/setup",
       "/api/dev/create-owner",

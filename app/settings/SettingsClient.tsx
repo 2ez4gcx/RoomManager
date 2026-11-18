@@ -15,6 +15,7 @@ import { formatSecret } from "../lib/totp-format";
 import type { PropertyOption } from "../../db/queries";
 import type { SettingKey } from "../../db/settings";
 import type { TwoFactorStatus } from "../../db/two-factor";
+import { MoneyInput } from "../components/MoneyInput";
 
 export function SettingsClient({
   settings, properties, twoFactor, currentUser,
@@ -115,10 +116,9 @@ export function SettingsClient({
                 </div>
               </div>
               <div className="settings-body rate-grid">
-                <label>Đơn giá điện<div className="setting-unit"><input name="rate.electricity" type="number" min={0} defaultValue={settings["rate.electricity"]} disabled={readOnly} /><span>đ/kWh</span></div></label>
-                <label>Đơn giá nước<div className="setting-unit"><input name="rate.water" type="number" min={0} defaultValue={settings["rate.water"]} disabled={readOnly} /><span>đ/người</span></div></label>
-                <label>Phí dịch vụ<div className="setting-unit"><input name="rate.service" type="number" min={0} defaultValue={settings["rate.service"]} disabled={readOnly} /><span>đ/phòng</span></div></label>
-                <label>Phí giữ xe<div className="setting-unit"><input name="rate.parking" type="number" min={0} defaultValue={settings["rate.parking"]} disabled={readOnly} /><span>đ/xe</span></div></label>
+                <label>Đơn giá điện<div className="setting-unit"><MoneyInput name="rate.electricity" required defaultValue={settings["rate.electricity"]} disabled={readOnly} /><span>đ/kWh</span></div></label>
+                <label>Đơn giá nước<div className="setting-unit"><MoneyInput name="rate.water" required defaultValue={settings["rate.water"]} disabled={readOnly} /><span>đ/người</span></div></label>
+                <label>Phí dịch vụ<div className="setting-unit"><MoneyInput name="rate.service" required defaultValue={settings["rate.service"]} disabled={readOnly} /><span>đ/phòng</span></div></label>
               </div>
             </section>
 

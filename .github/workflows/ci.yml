@@ -18,6 +18,10 @@ concurrency:
 permissions:
   contents: read
 
+# Action của bên thứ ba được ghim theo mã commit, không theo thẻ `v4`: thẻ có
+# thể bị chuyển sang commit khác, còn mã commit thì không. Khi nâng phiên bản,
+# lấy mã mới bằng `gh api repos/actions/checkout/git/ref/tags/<thẻ>`.
+
 jobs:
   kiem-tra:
     name: Typecheck, build, lint, test
@@ -25,9 +29,9 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           # Phải khớp Node ở máy phát triển, không phải mức tối thiểu trong
           # "engines". Node 22 kèm npm 10, Node 24 kèm npm 11, và hai bản npm
@@ -58,9 +62,9 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "24"
           cache: npm
@@ -89,7 +93,7 @@ jobs:
     timeout-minutes: 5
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: ALLOW_DEV_SETUP không được khai báo trong mã
         # Biến này mở route xoá sạch cơ sở dữ liệu. Route đã mặc định đóng,

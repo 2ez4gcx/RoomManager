@@ -3,7 +3,7 @@
  *
  * Tách khỏi `db/queries.ts` cho gọn; các kiểu dữ liệu dùng chung vẫn lấy từ đó.
  */
-import { and, asc, desc, eq, gt, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, notInArray, sql } from "drizzle-orm";
 import { getDb } from "./index";
 import { selectInChunks, todayInVietnam } from "./internal";
 import {
@@ -284,11 +284,23 @@ export async function invoiceSummary(period: string): Promise<InvoiceSummary> {
 /* Thu chi                                                            */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Nhóm giao dịch của tiền cọc. Cọc là tiền GIỮ HỘ khách: thu vào không phải
+ * doanh thu, hoàn ra không phải chi phí. Tính chung vào thu chi thì tháng có
+ * nhiều khách mới trông như lãi lớn, tháng có người trả phòng trông như lỗ, và
+ * "biên vận hành" không còn nói lên điều gì.
+ */
+export const DEPOSIT_CATEGORIES = ["Tiền cọc", "Hoàn cọc"];
+
 export type CashflowSummary = {
+  /** Thu, chi, lãi và biên của HOẠT ĐỘNG cho thuê — không gồm tiền cọc. */
   income: number;
   expense: number;
   net: number;
   margin: number;
+  /** Tiền cọc thu vào và hoàn ra trong kỳ, tách riêng khỏi các số trên. */
+  depositsIn: number;
+  depositsOut: number;
   /** Sáu tháng gần nhất, cũ đến mới. */
   monthly: Array<{ period: string; label: string; income: number; expense: number }>;
   expenseByCategory: Array<{ category: string; amount: number; share: number }>;
@@ -304,7 +316,24 @@ export async function cashflowSummary(period: string): Promise<CashflowSummary> 
       amount: sql<number>`sum(${ledgerEntries.amount})`,
     })
     .from(ledgerEntries)
+    .where(notInArray(ledgerEntries.category, DEPOSIT_CATEGORIES))
     .groupBy(sql`substr(${ledgerEntries.occurredAt}, 1, 7)`, ledgerEntries.direction);
+
+  const depositRows = await db
+    .select({
+      direction: ledgerEntries.direction,
+      amount: sql<number>`sum(${ledgerEntries.amount})`,
+    })
+    .from(ledgerEntries)
+    .where(
+      and(
+        inArray(ledgerEntries.category, DEPOSIT_CATEGORIES),
+        sql`substr(${ledgerEntries.occurredAt}, 1, 7) = ${period}`,
+      ),
+    )
+    .groupBy(ledgerEntries.direction);
+  const depositsIn = Number(depositRows.find((row) => row.direction === "in")?.amount ?? 0);
+  const depositsOut = Number(depositRows.find((row) => row.direction === "out")?.amount ?? 0);
 
   const monthly = new Map<string, { income: number; expense: number }>();
   for (const row of rows) {
@@ -334,6 +363,7 @@ export async function cashflowSummary(period: string): Promise<CashflowSummary> 
     .where(
       and(
         eq(ledgerEntries.direction, "out"),
+        notInArray(ledgerEntries.category, DEPOSIT_CATEGORIES),
         sql`substr(${ledgerEntries.occurredAt}, 1, 7) = ${period}`,
       ),
     )
@@ -348,6 +378,8 @@ export async function cashflowSummary(period: string): Promise<CashflowSummary> 
     expense: current.expense,
     net: current.income - current.expense,
     margin: current.income ? Math.round(((current.income - current.expense) / current.income) * 100) : 0,
+    depositsIn,
+    depositsOut,
     monthly: months,
     expenseByCategory: categories.map((row) => ({
       category: row.category,
