@@ -206,14 +206,13 @@ Sinh migration mới vào `drizzle/`. Khi deploy, control plane tự áp SQL nà
 
 ## Nguồn mã
 
-Repository riêng tư: <https://github.com/2ez4gcx/RoomManager>. Giữ ở chế độ private cho tới khi rà soát xong, vì lịch sử commit có chứa mật khẩu của tài khoản dữ liệu mẫu và toàn bộ logic nghiệp vụ.
+Repository: <https://github.com/2ez4gcx/RoomManager>.
 
-Tài khoản `test`/`test` đã bị xoá khỏi mã nguồn. Chỉ còn `quanly@hoangan.vn`/`roommanager` trong `db/seed.ts` — dữ liệu mẫu phải giữ lại vì bộ kiểm thử tự động dựng trên nó, nhưng nó không bao giờ được nạp vào cơ sở dữ liệu thật.
+Tài khoản `quanly@hoangan.vn`/`roommanager` trong `db/seed.ts` là dữ liệu mẫu, được công khai có chủ đích: bộ kiểm thử tự động dựng trên nó. Nó chỉ mở được cơ sở dữ liệu mẫu của người tự chạy trên máy họ và không bao giờ được nạp vào cơ sở dữ liệu thật. Mọi tên, số điện thoại, địa chỉ trong dữ liệu mẫu đều là giả.
 
-Trước khi chuyển sang public hoặc đưa lên môi trường thật:
+Trước khi đưa lên môi trường thật:
 
 - Khởi tạo cơ sở dữ liệu thật bằng đường **trống** (xem mục "Dùng thật"), không chạy `db:setup`.
 - Kiểm tra tài khoản mẫu không đăng nhập được trên môi trường thật.
-- Rà lại `.env` chưa từng bị commit (đang nằm trong `.gitignore`).
+- Không commit `.env` (đang nằm trong `.gitignore`).
 - Đảm bảo `ALLOW_DEV_SETUP` không được đặt trên môi trường thật — biến này mở route xóa sạch cơ sở dữ liệu.
-- Mật khẩu `roommanager` vẫn nằm trong lịch sử commit. Nếu muốn public thì đổi mật khẩu dữ liệu mẫu là chưa đủ — phải viết lại lịch sử, hoặc chấp nhận rằng nó chỉ mở được cơ sở dữ liệu mẫu của người tự chạy máy họ.
