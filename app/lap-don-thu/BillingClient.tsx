@@ -9,7 +9,7 @@ import type { SessionUser } from "../../db/auth";
 import type { BillingPreview } from "../../db/billing";
 
 /** Giá trị người dùng gõ vào từng dòng; để chuỗi rỗng nghĩa là chưa nhập. */
-type Draft = { currentReading: string; occupants: string; rent: string };
+type Draft = { previousReading: string; currentReading: string; occupants: string; rent: string };
 
 function periodLabel(period: string) {
   const [year, month] = period.split("-");
@@ -42,7 +42,7 @@ export function BillingClient({
   const pending = preview.rows.filter((row) => !row.existingInvoiceCode);
 
   function draftFor(contractId: string): Draft {
-    return drafts[contractId] ?? { currentReading: "", occupants: "", rent: "" };
+    return drafts[contractId] ?? { previousReading: "", currentReading: "", occupants: "", rent: "" };
   }
 
   function update(contractId: string, patch: Partial<Draft>) {
@@ -57,14 +57,25 @@ export function BillingClient({
     () =>
       preview.rows.map((row) => {
         const draft = draftFor(row.contractId);
+        // Phòng chưa có chỉ số nào: mốc đầu do người lập đơn nhập.
+        const previous =
+          !row.hasPreviousReading && draft.previousReading !== ""
+            ? Number(draft.previousReading)
+            : row.previousReading;
+        const needsOpening =
+          !row.hasPreviousReading &&
+          !row.existingInvoiceCode &&
+          draft.previousReading === "" &&
+          draft.currentReading !== "" &&
+          Number(draft.currentReading) > 0;
         const reading =
           draft.currentReading === ""
-            ? row.previousReading
+            ? previous
             : Number(draft.currentReading);
         const occupants = draft.occupants === "" ? row.occupants : Number(draft.occupants);
         const rent = draft.rent === "" ? row.rent : Number(draft.rent);
 
-        const kwh = Number.isFinite(reading) ? reading - row.previousReading : 0;
+        const kwh = Number.isFinite(reading) && Number.isFinite(previous) ? reading - previous : 0;
         const electricity = kwh > 0 ? kwh * preview.rates.electricity : 0;
         const water = (Number.isFinite(occupants) ? occupants : 0) * preview.rates.water;
         const rentAmount = Number.isFinite(rent) ? rent : 0;
@@ -77,7 +88,13 @@ export function BillingClient({
           service: preview.rates.service,
           total: rentAmount + electricity + water + preview.rates.service,
           // Công tơ không quay ngược; số nhỏ hơn chỉ số cũ chắc chắn là gõ nhầm.
-          invalid: Number.isFinite(reading) && reading < row.previousReading,
+          invalid:
+            needsOpening ||
+            !Number.isFinite(previous) ||
+            previous < 0 ||
+            (Number.isFinite(reading) && reading < previous),
+          needsOpening,
+          previous,
         };
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -120,6 +137,10 @@ export function BillingClient({
             return {
               contractId: row.contractId,
               currentReading: draft.currentReading === "" ? null : draft.currentReading,
+              previousReading:
+                !row.hasPreviousReading && draft.previousReading !== ""
+                  ? draft.previousReading
+                  : null,
               occupants: draft.occupants === "" ? null : draft.occupants,
               rent: draft.rent === "" ? null : draft.rent,
             };
@@ -253,15 +274,31 @@ export function BillingClient({
                         </small>
                       )}
                     </td>
-                    <td className="money">{entry.row.previousReading}</td>
+                    <td className="money">
+                      {entry.row.hasPreviousReading || issued ? (
+                        entry.row.previousReading
+                      ) : (
+                        <input
+                          type="number"
+                          min={0}
+                          className={entry.needsOpening ? "input-invalid" : ""}
+                          value={draft.previousReading}
+                          placeholder="Chỉ số đầu"
+                          title="Phòng chưa có chỉ số điện nào. Nhập số trên công tơ lúc khách vào ở."
+                          onChange={(event) =>
+                            update(entry.row.contractId, { previousReading: event.target.value })
+                          }
+                        />
+                      )}
+                    </td>
                     <td className="money">
                       <input
                         type="number"
-                        min={entry.row.previousReading}
+                        min={Number.isFinite(entry.previous) ? entry.previous : 0}
                         className={entry.invalid ? "input-invalid" : ""}
                         disabled={issued}
                         value={draft.currentReading}
-                        placeholder={String(entry.row.previousReading)}
+                        placeholder={String(Number.isFinite(entry.previous) ? entry.previous : 0)}
                         onChange={(event) =>
                           update(entry.row.contractId, { currentReading: event.target.value })
                         }
@@ -314,7 +351,8 @@ export function BillingClient({
 
         <div className="billing-actions">
           <p className="modal-hint">
-            Ô để trống sẽ lấy giá trị mờ đang hiện. Phát hành xong đơn không sửa được ở
+            Ô để trống sẽ lấy giá trị mờ đang hiện. Phòng chưa từng chốt điện có ô
+            &quot;Chỉ số đầu&quot;: nhập số trên công tơ lúc khách vào ở. Phát hành xong đơn không sửa được ở
             đây nữa — muốn đổi thì vào trang Đơn thu.
           </p>
           <button
@@ -323,7 +361,7 @@ export function BillingClient({
             disabled={busy || totals.count === 0 || totals.invalid > 0}
             title={
               totals.invalid > 0
-                ? "Có chỉ số điện nhỏ hơn chỉ số cũ"
+                ? "Có chỉ số điện nhỏ hơn chỉ số cũ, hoặc phòng chưa nhập chỉ số đầu"
                 : totals.count === 0
                   ? "Không còn phòng nào cần lập đơn"
                   : undefined

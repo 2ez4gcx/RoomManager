@@ -9,8 +9,16 @@ import { requireApiUser, toErrorResponse } from "../../lib/api";
 export async function GET(request: Request) {
   try {
     await requireApiUser();
-    const includeSent = new URL(request.url).searchParams.get("includeSent") === "true";
-    return Response.json({ reminders: await listReminders({ includeSent }) });
+    const params = new URL(request.url).searchParams;
+    const includeSent = params.get("includeSent") === "true";
+    // Xem danh sách tại một ngày cụ thể, đi cặp với `today` của POST bên dưới.
+    const today = params.get("today") ?? "";
+    return Response.json({
+      reminders: await listReminders({
+        includeSent,
+        today: /^\d{4}-\d{2}-\d{2}$/.test(today) ? today : undefined,
+      }),
+    });
   } catch (error) {
     return toErrorResponse(error);
   }

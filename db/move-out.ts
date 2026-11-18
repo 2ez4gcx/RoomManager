@@ -10,12 +10,21 @@
  * đó đã vào từ lúc thu cọc, ghi thêm là đếm hai lần. Nhờ cách này số dư sổ quỹ
  * khớp với tiền thật trong két.
  */
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { closeOutBilling, type ClosingResult } from "./billing";
 import { recordPayment } from "./finance";
 import { getDb } from "./index";
 import { newId } from "./ids";
 import { ISO_DATE, nextCode, ValidationError, withCodeRetry, writeAudit } from "./internal";
-import { contracts, guests, invoices, ledgerEntries, properties, rooms } from "./schema";
+import {
+  contracts,
+  guests,
+  invoices,
+  ledgerEntries,
+  meterReadings,
+  properties,
+  rooms,
+} from "./schema";
 
 export type MoveOutPreview = {
   contractId: string;
@@ -29,6 +38,8 @@ export type MoveOutPreview = {
   deposit: number;
   /** Tổng còn nợ của các đơn chưa thu đủ. */
   outstanding: number;
+  /** Chỉ số điện đã chốt gần nhất của phòng; `null` khi chưa có chỉ số nào. */
+  lastReading: number | null;
   unpaidInvoices: Array<{
     id: string;
     code: string;
@@ -97,6 +108,13 @@ export async function moveOutPreview(contractId: string): Promise<MoveOutPreview
 
   const unpaidInvoices = await listUnpaidInvoices(db, contractId);
 
+  const [lastReading] = await db
+    .select({ value: meterReadings.currentValue })
+    .from(meterReadings)
+    .where(and(eq(meterReadings.roomId, contract.roomId), eq(meterReadings.kind, "electricity")))
+    .orderBy(desc(meterReadings.period))
+    .limit(1);
+
   return {
     contractId: contract.id,
     contractCode: contract.code,
@@ -108,6 +126,7 @@ export async function moveOutPreview(contractId: string): Promise<MoveOutPreview
     startDate: contract.startDate,
     deposit: contract.deposit,
     outstanding: unpaidInvoices.reduce((sum, invoice) => sum + invoice.remaining, 0),
+    lastReading: lastReading?.value ?? null,
     unpaidInvoices,
   };
 }
@@ -119,6 +138,13 @@ export type MoveOutInput = {
   /** Khấu trừ hư hỏng, vệ sinh... trừ vào phần cọc còn lại. */
   deductions?: number;
   deductionNote?: string;
+  /** Số trên công tơ điện lúc trả phòng. Ghi lại làm mốc cho khách sau. */
+  finalReading?: number | null;
+  /**
+   * Lập đơn chốt cho tháng cuối (tiền phòng tới ngày trả, điện tới chỉ số
+   * chốt) rồi cấn vào cọc. Xem `closeOutBilling`.
+   */
+  issueFinalInvoice?: boolean;
   actorId: string;
 };
 
@@ -131,6 +157,10 @@ export type MoveOutResult = {
   refund: number;
   /** Khách vẫn còn nợ sau khi cấn hết cọc. */
   stillOwed: number;
+  /** Đơn chốt tháng cuối vừa lập, nếu có. Đã nằm trong phần cấn nợ ở trên. */
+  closingInvoice: { code: string; total: number } | null;
+  /** Tiền điện phát sinh sau đơn của kỳ, đã trừ vào cọc (nằm trong khấu trừ). */
+  electricityDeducted: number;
 };
 
 /**
@@ -174,6 +204,11 @@ export async function endContract(input: MoveOutInput): Promise<MoveOutResult> {
     throw new ValidationError("Khoản khấu trừ phải là số nguyên VNĐ.", "deductions");
   }
 
+  const finalReading = input.finalReading ?? null;
+  if (finalReading !== null && (!Number.isInteger(finalReading) || finalReading < 0)) {
+    throw new ValidationError("Chỉ số điện lúc trả phòng không hợp lệ.", "finalReading");
+  }
+
   const [room] = await db
     .select({ propertyId: rooms.propertyId })
     .from(rooms)
@@ -207,8 +242,20 @@ export async function endContract(input: MoveOutInput): Promise<MoveOutResult> {
   /** Đã thử ghi tiền chưa. Từ lúc này không còn được mở lại hợp đồng. */
   let moneyTouched = false;
   let outstanding = preview.outstanding;
+  let closing: ClosingResult = { invoice: null, extraElectricity: 0, extraElectricityNote: "" };
 
   try {
+    // Chốt tháng cuối TRƯỚC khi đọc nợ: đơn chốt (nếu lập) phải nằm trong danh
+    // sách đơn được cấn vào cọc. Bước này chưa đụng tới tiền cọc, nên hỏng ở
+    // đây thì hợp đồng vẫn được mở lại.
+    closing = await closeOutBilling({
+      contractId: input.contractId,
+      endDate: input.endDate,
+      finalReading,
+      issueInvoice: input.issueFinalInvoice ?? false,
+      actorId: input.actorId,
+    });
+
     // Đọc lại nợ SAU khi giành hợp đồng: số ở bản xem trước có thể đã cũ nếu
     // vừa có khoản thu thường vào một trong các đơn.
     const unpaidNow = await listUnpaidInvoices(db, input.contractId);
@@ -244,7 +291,7 @@ export async function endContract(input: MoveOutInput): Promise<MoveOutResult> {
     }
 
     // 2. Khấu trừ hư hỏng, lấy từ phần cọc còn lại.
-    deductionKept = Math.min(deductions, remainingDeposit);
+    deductionKept = Math.min(deductions + closing.extraElectricity, remainingDeposit);
     remainingDeposit -= deductionKept;
 
     // 3. Phần còn lại hoàn cho khách, ghi sổ quỹ là khoản chi.
@@ -334,8 +381,21 @@ export async function endContract(input: MoveOutInput): Promise<MoveOutResult> {
       deductionKept,
       refund,
       stillOwed,
+      closingInvoice: closing.invoice?.code ?? null,
+      finalReading,
+      electricityNote: closing.extraElectricityNote || undefined,
     },
   });
 
-  return { settledFromDeposit, deductionKept, refund, stillOwed };
+  return {
+    settledFromDeposit,
+    deductionKept,
+    refund,
+    stillOwed,
+    closingInvoice: closing.invoice
+      ? { code: closing.invoice.code, total: closing.invoice.total }
+      : null,
+    // Tiền điện được ưu tiên trong phần khấu trừ giữ lại.
+    electricityDeducted: Math.min(closing.extraElectricity, deductionKept),
+  };
 }

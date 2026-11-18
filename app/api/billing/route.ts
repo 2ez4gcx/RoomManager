@@ -1,8 +1,9 @@
 import { billingPreview, issueInvoices } from "../../../db/billing";
+import { todayInVietnam } from "../../../db/internal";
 import { requireApiUser, toErrorResponse, toNumber } from "../../lib/api";
 
 function currentPeriod() {
-  return new Date().toISOString().slice(0, 7);
+  return todayInVietnam().slice(0, 7);
 }
 
 export async function GET(request: Request) {
@@ -42,6 +43,7 @@ export async function POST(request: Request) {
         return {
           contractId: String(entry.contractId ?? ""),
           currentReading: toNumber(entry.currentReading),
+          previousReading: toNumber(entry.previousReading),
           occupants: toNumber(entry.occupants),
           rent: toNumber(entry.rent),
         };

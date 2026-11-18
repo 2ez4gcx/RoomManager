@@ -19,6 +19,36 @@ export class ValidationError extends Error {
 
 export const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+/**
+ * Ngày hôm nay theo giờ Việt Nam (UTC+7, không đổi giờ theo mùa).
+ *
+ * Worker chạy theo UTC: lấy ngày bằng `toISOString()` thì từ 0 giờ tới 7 giờ
+ * sáng ở Việt Nam vẫn là "hôm qua".
+ */
+export function todayInVietnam(now = Date.now()) {
+  return new Date(now + 7 * 60 * 60 * 1000).toISOString().slice(0, 10);
+}
+
+/**
+ * Chạy một truy vấn `IN (...)` theo từng lô id rồi gộp kết quả.
+ *
+ * D1 giới hạn 100 tham số mỗi câu lệnh. Truyền thẳng danh sách id của mọi hợp
+ * đồng vào `inArray` thì từ khoảng 99 hợp đồng trở lên câu lệnh vỡ, và cả màn
+ * hình lập đơn thu ngừng chạy đúng lúc nhà trọ lớn lên.
+ */
+const MAX_IN_LIST = 80;
+
+export async function selectInChunks<TId, TRow>(
+  ids: TId[],
+  run: (chunk: TId[]) => Promise<TRow[]>,
+): Promise<TRow[]> {
+  const rows: TRow[] = [];
+  for (let index = 0; index < ids.length; index += MAX_IN_LIST) {
+    rows.push(...(await run(ids.slice(index, index + MAX_IN_LIST))));
+  }
+  return rows;
+}
+
 export async function writeAudit(
   db: Db,
   entry: {

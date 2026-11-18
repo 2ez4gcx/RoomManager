@@ -102,7 +102,7 @@ export function InvoicesClient({
           <article>
             <span className="summary-icon gold"><WalletCards size={20} /></span>
             <div>
-              <small>Còn phải thu</small>
+              <small>Còn phải thu kỳ này</small>
               <strong>{formatMillions(summary.outstanding)}</strong>
               <p>{filtered.filter((invoice) => invoice.outstanding > 0).length} đơn chưa đủ</p>
             </div>
@@ -110,7 +110,7 @@ export function InvoicesClient({
           <article>
             <span className="summary-icon red"><FilePlus2 size={20} /></span>
             <div>
-              <small>Quá hạn</small>
+              <small>Quá hạn (mọi kỳ)</small>
               <strong>{formatMillions(summary.overdueAmount)}</strong>
               <p>{summary.overdueCount} đơn cần nhắc</p>
             </div>

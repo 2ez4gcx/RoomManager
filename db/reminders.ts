@@ -12,7 +12,7 @@
 import { and, asc, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import { getDb } from "./index";
 import { newId } from "./ids";
-import { insertChunked, ValidationError, writeAudit } from "./internal";
+import { insertChunked, todayInVietnam, ValidationError, writeAudit } from "./internal";
 import {
   contracts,
   guests,
@@ -113,7 +113,7 @@ export type GenerateResult = {
  * buộc UNIQUE `(invoice_id, scheduled_for)` lo việc đó, và hàm cũng tự lọc
  * trước để không phải dựa vào lỗi khóa.
  */
-export async function generateReminders(today = new Date().toISOString().slice(0, 10)) {
+export async function generateReminders(today = todayInVietnam()) {
   const db = getDb();
   const settings = await getSettings();
 
@@ -139,19 +139,12 @@ export async function generateReminders(today = new Date().toISOString().slice(0
     .innerJoin(guests, eq(guests.id, contracts.primaryGuestId))
     .where(inArray(invoices.status, ["issued", "partial"]));
 
-  const invoiceIds = rows.map((row) => row.invoiceId);
-  const existing =
-    invoiceIds.length === 0
-      ? []
-      : await db
-          .select({ invoiceId: reminders.invoiceId })
-          .from(reminders)
-          .where(
-            and(
-              eq(reminders.scheduledFor, today),
-              inArray(reminders.invoiceId, invoiceIds),
-            ),
-          );
+  // Lọc theo ngày, không truyền danh sách id đơn vào SQL: D1 giới hạn 100
+  // tham số, từ khoảng 99 đơn chưa thu là câu lệnh vỡ và cron ngừng nhắc.
+  const existing = await db
+    .select({ invoiceId: reminders.invoiceId })
+    .from(reminders)
+    .where(eq(reminders.scheduledFor, today));
   const alreadyToday = new Set(existing.map((row) => row.invoiceId));
 
   const toCreate: Array<typeof reminders.$inferInsert> = [];
@@ -208,51 +201,134 @@ export async function generateReminders(today = new Date().toISOString().slice(0
   return { today, created: toCreate.length, skipped } satisfies GenerateResult;
 }
 
-export async function listReminders(options?: { includeSent?: boolean }) {
-  const db = getDb();
-
-  const rows = await db
-    .select({
-      id: reminders.id,
-      invoiceId: reminders.invoiceId,
-      invoiceCode: invoices.code,
-      kind: reminders.kind,
-      scheduledFor: reminders.scheduledFor,
-      dueDate: reminders.dueDate,
-      amount: reminders.amount,
-      message: reminders.message,
-      sentAt: reminders.sentAt,
-      channel: reminders.channel,
-      tenantName: guests.fullName,
-      tenantPhone: guests.phone,
-      roomCode: rooms.code,
-      propertyName: properties.name,
-      period: invoices.period,
-    })
-    .from(reminders)
-    .innerJoin(invoices, eq(invoices.id, reminders.invoiceId))
-    .innerJoin(rooms, eq(rooms.id, invoices.roomId))
-    .innerJoin(properties, eq(properties.id, rooms.propertyId))
-    .innerJoin(contracts, eq(contracts.id, invoices.contractId))
-    .innerJoin(guests, eq(guests.id, contracts.primaryGuestId))
-    .where(options?.includeSent ? undefined : isNull(reminders.sentAt))
-    .orderBy(desc(reminders.scheduledFor), asc(rooms.code))
-    .limit(300);
-
-  return rows.map((row) => ({
-    ...row,
-    kindLabel: REMINDER_LABEL[row.kind],
-    sentAt: row.sentAt ? row.sentAt.toISOString() : null,
-  })) satisfies ReminderView[];
+/** Mốc nhắc tính theo hôm nay so với hạn của đơn. */
+function kindFor(today: string, dueDate: string): ReminderKind {
+  const offset = daysBetween(today, dueDate);
+  if (offset > 0) return "before_due";
+  return offset === 0 ? "due" : "overdue";
 }
 
-/** Số lời nhắc chưa gửi, dùng cho huy hiệu trên thanh điều hướng. */
+/**
+ * Danh sách lời nhắc.
+ *
+ * Lời nhắc CHƯA gửi được dựng lại theo tình trạng hiện tại của đơn, không
+ * dùng con số chụp lúc tạo:
+ *
+ * - Đơn đã thu đủ hoặc đã hủy thì không còn lời nhắc. Trước đây lời nhắc sống
+ *   lâu hơn khoản nợ: khách trả xong vẫn có sẵn một tin "quá hạn" để gửi.
+ * - Mỗi đơn chỉ hiện một lời nhắc. Cron tạo một bản ghi mỗi ngày trong cửa sổ
+ *   nhắc, cộng cả lại thì một đơn 4 triệu thành 16 triệu "cần thu".
+ * - Số tiền là phần còn nợ lúc này, và nội dung tin soạn theo ngày hôm nay.
+ *
+ * Lời nhắc đã gửi giữ nguyên nội dung lúc gửi, vì đó là lịch sử.
+ */
+export async function listReminders(options?: { includeSent?: boolean; today?: string }) {
+  const db = getDb();
+  // `today` chỉ được truyền khi xem danh sách tại một ngày giả lập (kiểm thử,
+  // hoặc rà tay cho một ngày cụ thể). Khi đó bỏ qua lời nhắc hẹn sau ngày ấy.
+  const asOf = options?.today;
+  const today = asOf ?? todayInVietnam();
+
+  const [rows, settings] = await Promise.all([
+    db
+      .select({
+        id: reminders.id,
+        invoiceId: reminders.invoiceId,
+        invoiceCode: invoices.code,
+        kind: reminders.kind,
+        scheduledFor: reminders.scheduledFor,
+        dueDate: reminders.dueDate,
+        amount: reminders.amount,
+        message: reminders.message,
+        sentAt: reminders.sentAt,
+        channel: reminders.channel,
+        tenantName: guests.fullName,
+        tenantPhone: guests.phone,
+        roomCode: rooms.code,
+        propertyName: properties.name,
+        period: invoices.period,
+        invoiceStatus: invoices.status,
+        invoiceDueDate: invoices.dueDate,
+        invoiceTotal: invoices.total,
+        invoicePaid: invoices.paidAmount,
+      })
+      .from(reminders)
+      .innerJoin(invoices, eq(invoices.id, reminders.invoiceId))
+      .innerJoin(rooms, eq(rooms.id, invoices.roomId))
+      .innerJoin(properties, eq(properties.id, rooms.propertyId))
+      .innerJoin(contracts, eq(contracts.id, invoices.contractId))
+      .innerJoin(guests, eq(guests.id, contracts.primaryGuestId))
+      .where(options?.includeSent ? undefined : isNull(reminders.sentAt))
+      .orderBy(desc(reminders.scheduledFor), asc(rooms.code))
+      .limit(1000),
+    getSettings(),
+  ]);
+
+  const orgName = settings["org.name"] ?? "";
+  const shown = new Set<string>();
+  const views: ReminderView[] = [];
+
+  for (const row of rows) {
+    const { invoiceStatus, invoiceDueDate, invoiceTotal, invoicePaid, ...stored } = row;
+
+    if (row.sentAt) {
+      views.push({
+        ...stored,
+        kindLabel: REMINDER_LABEL[row.kind],
+        sentAt: row.sentAt.toISOString(),
+      });
+      continue;
+    }
+
+    if (asOf && row.scheduledFor > asOf) continue;
+
+    const remaining = invoiceTotal - invoicePaid;
+    if ((invoiceStatus !== "issued" && invoiceStatus !== "partial") || remaining <= 0) continue;
+    // Đã sắp theo ngày giảm dần: bản ghi đầu tiên của mỗi đơn là mới nhất.
+    if (shown.has(row.invoiceId)) continue;
+    shown.add(row.invoiceId);
+
+    const kind = kindFor(today, invoiceDueDate);
+    views.push({
+      ...stored,
+      kind,
+      kindLabel: REMINDER_LABEL[kind],
+      dueDate: invoiceDueDate,
+      amount: remaining,
+      message: composeMessage({
+        kind,
+        tenantName: row.tenantName,
+        roomCode: row.roomCode,
+        period: row.period,
+        amount: remaining,
+        dueDate: invoiceDueDate,
+        today,
+        orgName,
+      }),
+      sentAt: null,
+    });
+  }
+
+  return views.slice(0, 300);
+}
+
+/**
+ * Số ĐƠN đang có lời nhắc chưa gửi, dùng cho huy hiệu trên thanh điều hướng.
+ * Đếm theo đơn còn nợ để khớp với danh sách ở trên.
+ */
 export async function pendingReminderCount() {
   const db = getDb();
   const [row] = await db
-    .select({ count: sql<number>`count(*)` })
+    .select({ count: sql<number>`count(distinct ${reminders.invoiceId})` })
     .from(reminders)
-    .where(isNull(reminders.sentAt));
+    .innerJoin(invoices, eq(invoices.id, reminders.invoiceId))
+    .where(
+      and(
+        isNull(reminders.sentAt),
+        inArray(invoices.status, ["issued", "partial"]),
+        sql`${invoices.total} > ${invoices.paidAmount}`,
+      ),
+    );
   return Number(row?.count ?? 0);
 }
 
@@ -270,7 +346,7 @@ export async function markReminderSent(input: {
   }
 
   const [reminder] = await db
-    .select({ id: reminders.id, sentAt: reminders.sentAt })
+    .select({ id: reminders.id, sentAt: reminders.sentAt, invoiceId: reminders.invoiceId })
     .from(reminders)
     .where(eq(reminders.id, input.reminderId))
     .limit(1);
@@ -280,7 +356,9 @@ export async function markReminderSent(input: {
   await db
     .update(reminders)
     .set({ sentAt: new Date(), channel: input.channel, sentBy: input.actorId })
-    .where(eq(reminders.id, reminder.id));
+    // Đóng luôn các lời nhắc cũ chưa gửi của cùng đơn. Danh sách chỉ hiện bản
+    // mới nhất; để lại bản cũ thì đánh dấu xong nó lại trồi lên thế chỗ.
+    .where(and(eq(reminders.invoiceId, reminder.invoiceId), isNull(reminders.sentAt)));
 
   await writeAudit(db, {
     actorId: input.actorId,

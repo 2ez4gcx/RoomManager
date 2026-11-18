@@ -302,6 +302,8 @@ function MoveOutModal({
 }) {
   const [preview, setPreview] = useState<MoveOutPreview | null>(null);
   const [deductions, setDeductions] = useState("");
+  const [finalReading, setFinalReading] = useState("");
+  const [issueFinal, setIssueFinal] = useState(true);
   const [endDate, setEndDate] = useState(new Date().toISOString().slice(0, 10));
   const [result, setResult] = useState<MoveOutResult | null>(null);
   const [error, setError] = useState("");
@@ -315,6 +317,8 @@ function MoveOutModal({
     setResult(null);
     setError("");
     setDeductions("");
+    setFinalReading("");
+    setIssueFinal(true);
     fetch(`/api/move-out?contractId=${encodeURIComponent(tenant.contractId)}`)
       .then(async (response) => {
         const payload = (await response.json()) as MoveOutPreview & { error?: string };
@@ -351,6 +355,8 @@ function MoveOutModal({
           reason: form.get("reason"),
           deductions: deductions === "" ? 0 : deductions,
           deductionNote: form.get("deductionNote"),
+          finalReading: finalReading === "" ? null : finalReading,
+          issueFinalInvoice: issueFinal,
         }),
       });
       const payload = (await response.json()) as MoveOutResult & { error?: string };
@@ -391,8 +397,20 @@ function MoveOutModal({
           <span><Check size={28} /></span>
           <h2>Đã trả phòng</h2>
           <div className="detail-list settle-list">
+            {result.closingInvoice && (
+              <div>
+                <span>Đơn chốt tháng cuối {result.closingInvoice.code}</span>
+                <strong>{money.format(result.closingInvoice.total)}đ</strong>
+              </div>
+            )}
             <div><span>Cấn vào tiền còn nợ</span><strong>{money.format(result.settledFromDeposit)}đ</strong></div>
             <div><span>Khấu trừ giữ lại</span><strong>{money.format(result.deductionKept)}đ</strong></div>
+            {result.electricityDeducted > 0 && (
+              <div>
+                <span>Trong đó tiền điện chốt cuối</span>
+                <strong>{money.format(result.electricityDeducted)}đ</strong>
+              </div>
+            )}
             <div><span>Hoàn lại cho khách</span><strong className="paid">{money.format(result.refund)}đ</strong></div>
             {result.stillOwed > 0 && (
               <div><span>Khách còn nợ</span><strong className="debt">{money.format(result.stillOwed)}đ</strong></div>
@@ -457,6 +475,35 @@ function MoveOutModal({
               </div>
             </label>
           </div>
+          <div className="form-grid">
+            <label>
+              Chỉ số điện lúc trả phòng
+              <input
+                type="number"
+                min={preview.lastReading ?? 0}
+                value={finalReading}
+                placeholder={
+                  preview.lastReading === null
+                    ? "Số trên công tơ"
+                    : `Đã chốt gần nhất: ${preview.lastReading}`
+                }
+                onChange={(event) => setFinalReading(event.target.value)}
+              />
+            </label>
+            <label className="checkbox-line">
+              <input
+                type="checkbox"
+                checked={issueFinal}
+                onChange={(event) => setIssueFinal(event.target.checked)}
+              />
+              Lập đơn chốt tháng cuối và cấn vào cọc
+            </label>
+          </div>
+          <p className="modal-hint">
+            {issueFinal
+              ? "Nếu tháng trả phòng chưa có đơn, hệ thống lập đơn chốt: tiền phòng tính tới ngày trả, điện tính tới chỉ số trên. Nếu tháng đó đã có đơn, phần điện dùng thêm được trừ vào cọc."
+              : "Không thu thêm gì cho tháng cuối. Chỉ số điện (nếu nhập) vẫn được ghi lại để khách sau không phải trả phần điện của khách này."}
+          </p>
           <label>Lý do trả phòng<input name="reason" placeholder="Hết hạn hợp đồng, chuyển chỗ ở..." /></label>
           <label>Ghi chú khấu trừ<input name="deductionNote" placeholder="Vỡ kính, sơn lại tường..." /></label>
 
@@ -464,7 +511,7 @@ function MoveOutModal({
             <div><span>Cấn vào tiền còn nợ</span><b>− {money.format(settled)}đ</b></div>
             <div><span>Khấu trừ giữ lại</span><b>− {money.format(kept)}đ</b></div>
             <div className="settle-total">
-              <span>Hoàn lại cho khách</span>
+              <span>Hoàn lại cho khách{issueFinal ? " (chưa trừ tháng cuối)" : ""}</span>
               <b>{money.format(refund)}đ</b>
             </div>
             {stillOwed > 0 && (

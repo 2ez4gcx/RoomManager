@@ -7,6 +7,7 @@
  */
 import { and, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import { getDb } from "./index";
+import { todayInVietnam } from "./internal";
 import { pendingReminderCount } from "./reminders";
 import {
   bookingRequests,
@@ -290,15 +291,15 @@ export type DashboardSummary = {
 
 export async function dashboardSummary(): Promise<DashboardSummary> {
   const db = getDb();
-  const period = new Date().toISOString().slice(0, 7);
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = todayInVietnam();
+  const period = todayIso.slice(0, 7);
 
   const [roomViews, pendingReminders] = await Promise.all([
     listRooms(),
     pendingReminderCount(),
   ]);
 
-  const [[periodTotals], [newBookingRow], [expiringRow], [overdueRow]] = await Promise.all([
+  const [[periodTotals], [newBookingRow], [expiringRow], [overdueRow], [unpaidRow]] = await Promise.all([
     db
       .select({
         billed: sql<number>`coalesce(sum(${invoices.total}), 0)`,
@@ -329,6 +330,15 @@ export async function dashboardSummary(): Promise<DashboardSummary> {
           sql`${invoices.dueDate} < ${todayIso}`,
         ),
       ),
+    // Nợ của MỌI kỳ. Tính riêng kỳ hiện tại thì nợ tháng trước biến mất khỏi
+    // con số ngay ngày đầu tháng, trong khi dòng "đơn quá hạn" bên cạnh vẫn
+    // đếm chúng.
+    db
+      .select({
+        amount: sql<number>`coalesce(sum(${invoices.total} - ${invoices.paidAmount}), 0)`,
+      })
+      .from(invoices)
+      .where(inArray(invoices.status, ["issued", "partial"])),
   ]);
 
   const counts = {
@@ -363,7 +373,7 @@ export async function dashboardSummary(): Promise<DashboardSummary> {
     occupancyRate: roomViews.length ? Math.round((counts.occupied / roomViews.length) * 100) : 0,
     collected,
     billed,
-    outstanding: billed - collected,
+    outstanding: Number(unpaidRow?.amount ?? 0),
     overdueInvoices: Number(overdueRow?.count ?? 0),
     newBookings: Number(newBookingRow?.count ?? 0),
     expiringContracts: Number(expiringRow?.count ?? 0),

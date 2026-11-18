@@ -23,6 +23,8 @@ export async function POST(request: Request) {
       reason: body.reason ? String(body.reason) : "",
       deductions: toNumber(body.deductions) ?? 0,
       deductionNote: body.deductionNote ? String(body.deductionNote) : "",
+      finalReading: toNumber(body.finalReading),
+      issueFinalInvoice: body.issueFinalInvoice === true,
       actorId: user.id,
     });
 

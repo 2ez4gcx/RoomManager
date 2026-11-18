@@ -1555,6 +1555,8 @@ test("trả phòng khi không nợ thì hoàn đủ cọc và phòng thành tr�
     deductionKept: 0,
     refund: 5000000,
     stillOwed: 0,
+    closingInvoice: null,
+    electricityDeducted: 0,
   });
 
   // Khoản hoàn phải ra sổ quỹ, vì tiền mặt thật sự rời két.
@@ -1594,6 +1596,148 @@ test("hai lần trả phòng song song chỉ hoàn cọc một lần", async () 
 
   const after = await ledgerTotals();
   assert.equal(after.refunds - before.refunds, 2000000, "cọc bị hoàn hai lần");
+});
+
+/* ------------------------------------------------------------------ */
+/* Chỉ số điện đầu, hạn thanh toán và chốt tháng cuối                 */
+/* ------------------------------------------------------------------ */
+
+const KY_NAY = () => new Date(Date.now() + 7 * 3600 * 1000).toISOString().slice(0, 7);
+
+test("hạn thanh toán không bao giờ rơi trước ngày lập đơn", async () => {
+  // Kỳ hiện tại: ngày thu của kỳ có thể đã qua. Đơn lập hôm nay mà hạn hôm
+  // kia thì vừa phát hành đã quá hạn.
+  const data = await preview(KY_NAY());
+  assert.ok(data.rows.length > 0);
+  for (const row of data.rows) {
+    assert.ok(
+      row.dueDate >= data.issueDate,
+      `${row.roomCode}: hạn ${row.dueDate} trước ngày lập ${data.issueDate}`,
+    );
+  }
+
+  // Kỳ tương lai: hạn vẫn là ngày thu trong chính tháng đó.
+  const future = nextPeriod(7);
+  for (const row of (await preview(future)).rows) {
+    assert.ok(row.dueDate.startsWith(future), `${row.roomCode}: ${row.dueDate}`);
+  }
+});
+
+test("phòng chưa có chỉ số điện thì phải nhập chỉ số đầu, không tính từ 0", async () => {
+  const { room } = await rentARoom("Khách Công Tơ", "0905550051", 6000000);
+  const period = KY_NAY();
+  const data = await preview(period);
+  const target = data.rows.find((row) => row.roomCode === room.code);
+  assert.ok(target, "hợp đồng mới phải nằm trong kỳ này");
+  assert.equal(target.hasPreviousReading, false, "tiền đề: phòng chưa từng chốt điện");
+
+  // Công tơ thật đang ở 12.400. Không khai chỉ số đầu thì bị từ chối, thay vì
+  // lặng lẽ tính 12.400 kWh.
+  const refused = await json("/api/billing", {
+    period,
+    entries: [{ contractId: target.contractId, currentReading: 12400 }],
+  });
+  assert.equal(refused.status, 400);
+  assert.match((await refused.json()).error, /chỉ số đầu/i);
+
+  const issued = await json("/api/billing", {
+    period,
+    entries: [{ contractId: target.contractId, previousReading: 12345, currentReading: 12400 }],
+  });
+  assert.equal(issued.status, 201);
+
+  const { invoices } = await (await authed(`/api/invoices?period=${period}`)).json();
+  const invoice = invoices.find((row) => row.roomCode === room.code && row.status !== "cancelled");
+  assert.equal(
+    invoice.total,
+    target.rent + 55 * data.rates.electricity + target.occupants * data.rates.water + data.rates.service,
+    "tiền điện phải là 55 kWh",
+  );
+});
+
+test("trả phòng khi kỳ đã có đơn: điện dùng thêm trừ vào cọc, khách sau bắt đầu từ chỉ số chốt", async () => {
+  const period = KY_NAY();
+  const data = await preview(period);
+  const { tenants } = await (await authed("/api/tenants")).json();
+  const tenant = tenants.find((row) => row.fullName === "Khách Công Tơ");
+  const roomCode = tenant.roomCode;
+  const { rooms: before } = await (await authed("/api/rooms")).json();
+  const roomId = before.find((room) => room.code === roomCode).id;
+
+  const lower = await json("/api/move-out", {
+    contractId: tenant.contractId,
+    endDate: new Date().toISOString().slice(0, 10),
+    finalReading: 12399,
+    issueFinalInvoice: true,
+  });
+  assert.equal(lower.status, 400, "chỉ số chốt nhỏ hơn chỉ số đã lập đơn phải bị từ chối");
+
+  // Từ chối xong hợp đồng phải còn nguyên để làm lại.
+  const response = await json("/api/move-out", {
+    contractId: tenant.contractId,
+    endDate: new Date().toISOString().slice(0, 10),
+    finalReading: 12450,
+    issueFinalInvoice: true,
+  });
+  assert.equal(response.status, 200);
+  const result = await response.json();
+
+  const extra = 50 * data.rates.electricity;
+  assert.equal(result.closingInvoice, null, "kỳ đã có đơn thì không lập đơn thứ hai");
+  assert.equal(result.electricityDeducted, extra);
+  assert.equal(result.deductionKept, extra);
+  assert.equal(result.settledFromDeposit + result.deductionKept + result.refund, 6000000);
+
+  // Khách mới vào đúng phòng đó, cùng kỳ: mốc điện là 12.450, không phải
+  // 12.345 (mốc đầu kỳ của khách cũ) hay 12.400.
+  const created = await json("/api/tenants", {
+    fullName: "Khách Kế Tiếp",
+    phone: "0905550052",
+    roomId,
+    startDate: new Date().toISOString().slice(0, 10),
+    deposit: 1000000,
+  });
+  assert.equal(created.status, 201);
+
+  const next = (await preview(period)).rows.find((row) => row.roomCode === roomCode);
+  assert.equal(next.tenantName, "Khách Kế Tiếp");
+  assert.equal(next.existingInvoiceCode, null);
+  assert.equal(next.hasPreviousReading, true);
+  assert.equal(next.previousReading, 12450);
+});
+
+test("trả phòng khi kỳ chưa có đơn: lập đơn chốt và cấn vào cọc", async () => {
+  const { tenants } = await (await authed("/api/tenants")).json();
+  const tenant = tenants.find((row) => row.fullName === "Khách Kế Tiếp");
+  const period = KY_NAY();
+
+  const response = await json("/api/move-out", {
+    contractId: tenant.contractId,
+    endDate: new Date().toISOString().slice(0, 10),
+    finalReading: 12460,
+    issueFinalInvoice: true,
+  });
+  assert.equal(response.status, 200);
+  const result = await response.json();
+
+  assert.ok(result.closingInvoice, "phải lập đơn chốt tháng cuối");
+  const { invoices } = await (await authed(`/api/invoices?period=${period}`)).json();
+  const closing = invoices.find((row) => row.code === result.closingInvoice.code);
+  assert.ok(closing, "đơn chốt phải hiện trong danh sách đơn thu");
+
+  // Cọc 1 triệu: cấn hết vào đơn chốt, hoặc cấn đủ đơn rồi hoàn phần dư.
+  const settled = Math.min(1000000, result.closingInvoice.total);
+  assert.equal(result.settledFromDeposit, settled);
+  assert.equal(result.refund, 1000000 - settled);
+  assert.equal(result.stillOwed, result.closingInvoice.total - settled);
+  assert.equal(closing.paidAmount, settled);
+
+  // Đơn chốt có 10 kWh điện (12.450 → 12.460), không phải tính từ 0.
+  const data = await preview(period);
+  assert.ok(
+    result.closingInvoice.total < 10 * data.rates.electricity + 10_000_000,
+    "tiền điện của đơn chốt bất thường",
+  );
 });
 
 test("cọc được cấn vào đơn còn nợ, phần dư mới hoàn lại", async () => {
@@ -1775,7 +1919,12 @@ async function issueOneInvoice(periodOffset, readingDelta = 100) {
   const issued = await json("/api/billing", {
     period,
     entries: [
-      { contractId: target.contractId, currentReading: target.previousReading + readingDelta },
+      {
+        contractId: target.contractId,
+        currentReading: target.previousReading + readingDelta,
+        // Phòng chưa từng chốt điện thì phải khai chỉ số đầu.
+        ...(target.hasPreviousReading ? {} : { previousReading: target.previousReading }),
+      },
     ],
   });
   assert.equal(issued.status, 201);
@@ -2126,8 +2275,13 @@ async function runReminders(today) {
   return response.json();
 }
 
-async function pendingReminders() {
-  const { reminders } = await (await authed("/api/reminders")).json();
+/**
+ * Danh sách chờ. Truyền `today` để xem tại đúng ngày giả lập đã rà: nội dung
+ * lời nhắc chưa gửi được dựng theo ngày xem, không theo ngày tạo.
+ */
+async function pendingReminders(today) {
+  const query = today ? `?today=${today}` : "";
+  const { reminders } = await (await authed(`/api/reminders${query}`)).json();
   return reminders;
 }
 
@@ -2154,7 +2308,7 @@ test("đúng ngày đến hạn thì sinh lời nhắc mốc đến hạn", asyn
   const result = await runReminders(invoice.dueDate);
   assert.ok(result.created > 0, "không sinh lời nhắc nào");
 
-  const list = await pendingReminders();
+  const list = await pendingReminders(invoice.dueDate);
   const reminder = list.find((item) => item.invoiceCode === invoice.code);
   assert.ok(reminder, `không thấy lời nhắc cho ${invoice.code}`);
   assert.equal(reminder.kind, "due");
@@ -2169,13 +2323,13 @@ test("đúng ngày đến hạn thì sinh lời nhắc mốc đến hạn", asyn
 
 test("rà lại trong cùng ngày không tạo lời nhắc trùng", async () => {
   const invoice = await anyUnpaidInvoice();
-  const before = (await pendingReminders()).length;
+  const before = (await pendingReminders(invoice.dueDate)).length;
 
   const again = await runReminders(invoice.dueDate);
   assert.equal(again.created, 0, "tạo thêm lời nhắc trùng trong cùng ngày");
   assert.ok(again.skipped > 0);
 
-  assert.equal((await pendingReminders()).length, before);
+  assert.equal((await pendingReminders(invoice.dueDate)).length, before);
 });
 
 test("trước hạn trong ngưỡng thì nhắc, ngoài ngưỡng thì thôi", async () => {
@@ -2183,7 +2337,7 @@ test("trước hạn trong ngưỡng thì nhắc, ngoài ngưỡng thì thôi", 
 
   // Mặc định nhắc trước 3 ngày. Cách 10 ngày thì chưa tới lượt.
   const early = await runReminders(shiftDate(invoice.dueDate, -10));
-  const list = await pendingReminders();
+  const list = await pendingReminders(shiftDate(invoice.dueDate, -10));
   assert.ok(
     !list.some(
       (item) => item.invoiceCode === invoice.code && item.scheduledFor === shiftDate(invoice.dueDate, -10),
@@ -2195,7 +2349,7 @@ test("trước hạn trong ngưỡng thì nhắc, ngoài ngưỡng thì thôi", 
   // Cách 2 ngày thì trong ngưỡng.
   const soon = shiftDate(invoice.dueDate, -2);
   await runReminders(soon);
-  const after = await pendingReminders();
+  const after = await pendingReminders(soon);
   const reminder = after.find(
     (item) => item.invoiceCode === invoice.code && item.scheduledFor === soon,
   );
@@ -2212,7 +2366,7 @@ test("quá hạn thì nhắc lại theo chu kỳ chứ không nhắc mỗi ngày
   for (const late of [3, 4, 5, 6]) {
     const day = shiftDate(invoice.dueDate, late);
     await runReminders(day);
-    const list = await pendingReminders();
+    const list = await pendingReminders(day);
     results[late] = list.some(
       (item) => item.invoiceCode === invoice.code && item.scheduledFor === day,
     );
@@ -2226,7 +2380,7 @@ test("quá hạn thì nhắc lại theo chu kỳ chứ không nhắc mỗi ngày
 
 test("nội dung nhắc quá hạn nói rõ số ngày trễ", async () => {
   const invoice = await anyUnpaidInvoice();
-  const list = await pendingReminders();
+  const list = await pendingReminders(shiftDate(invoice.dueDate, 6));
   const overdue = list.find(
     (item) => item.invoiceCode === invoice.code && item.kind === "overdue",
   );
@@ -2242,10 +2396,40 @@ test("đơn đã thu đủ thì không bị nhắc", async () => {
   assert.ok(paid, "dữ liệu mẫu phải có đơn đã thu đủ");
 
   await runReminders(paid.dueDate);
-  const list = await pendingReminders();
+  const list = await pendingReminders(paid.dueDate);
   assert.ok(
     !list.some((item) => item.invoiceCode === paid.code),
     "nhắc nợ cả đơn đã thu đủ",
+  );
+});
+
+test("lời nhắc chưa gửi: mỗi đơn một dòng, theo số còn nợ, và biến mất khi đơn thu đủ", async () => {
+  const invoice = await anyUnpaidInvoice();
+  const d2 = shiftDate(invoice.dueDate, -2);
+  const d1 = shiftDate(invoice.dueDate, -1);
+  await runReminders(d2);
+  await runReminders(d1);
+
+  // Hai ngày liên tiếp trong cửa sổ nhắc tạo hai bản ghi, nhưng chỉ hiện một.
+  const mine = (await pendingReminders(d1)).filter((item) => item.invoiceCode === invoice.code);
+  assert.equal(mine.length, 1, "một đơn bị nhắc thành nhiều dòng, tổng cần thu bị cộng trùng");
+  assert.equal(mine[0].amount, invoice.outstanding);
+
+  // Thu một phần: số tiền trong lời nhắc phải theo phần còn nợ hiện tại.
+  const part = 100000;
+  assert.equal((await json("/api/payments", { invoiceId: invoice.id, amount: part })).status, 201);
+  const afterPart = (await pendingReminders(d1)).find((item) => item.invoiceCode === invoice.code);
+  assert.equal(afterPart.amount, invoice.outstanding - part);
+
+  // Thu đủ: không còn lời nhắc nào cho đơn này.
+  assert.equal(
+    (await json("/api/payments", { invoiceId: invoice.id, amount: invoice.outstanding - part })).status,
+    201,
+  );
+  const afterFull = await pendingReminders(d1);
+  assert.ok(
+    !afterFull.some((item) => item.invoiceCode === invoice.code),
+    "đơn đã thu đủ vẫn còn lời nhắc chờ gửi",
   );
 });
 
@@ -2346,10 +2530,17 @@ for (const [pathname, expected] of [
   });
 }
 
-test("trang Đơn thu hiển thị đủ 32 đơn của kỳ hiện tại", async () => {
+test("trang Đơn thu hiển thị đủ mọi đơn của kỳ hiện tại", async () => {
+  const pattern = /DT-\d{6}-\d+-[A-Z]{2}/g;
   const html = await (await authed("/invoices")).text();
-  const codes = new Set(html.match(/DT-\d{6}-\d+-[A-Z]{2}/g) ?? []);
-  assert.equal(codes.size, 32);
+  const shown = new Set(html.match(pattern) ?? []);
+
+  // Đối chiếu với API thay vì một con số cứng: các bài kiểm thử phía trên có
+  // lập thêm đơn trong kỳ này. Dữ liệu mẫu có 32 đơn, nên ít nhất phải chừng đó.
+  const { invoices } = await (await authed("/api/invoices")).json();
+  const expected = new Set(invoices.flatMap((invoice) => invoice.code.match(pattern) ?? []));
+  assert.ok(expected.size >= 32, `chỉ có ${expected.size} đơn trong kỳ`);
+  assert.deepEqual([...shown].sort(), [...expected].sort());
 });
 
 test("trang Thu chi hiển thị giao dịch thật từ sổ", async () => {
