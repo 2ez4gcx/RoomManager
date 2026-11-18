@@ -7,7 +7,7 @@
  * thì bất kỳ ai trong cùng wifi cũng xóa sạch được cơ sở dữ liệu, không cần
  * đăng nhập. Đừng bao giờ dùng `npm run dev` làm server.
  *
- * Chạy trên Miniflare 4 — đúng runtime mà 132 bài kiểm thử đang chạy — chứ
+ * Chạy trên Miniflare 4 — đúng runtime mà bộ kiểm thử đang chạy — chứ
  * không qua CLI wrangler. Lý do: wrangler đi kèm dự án có workerd cũ hơn bản
  * build và tự sập, còn bản wrangler mới hơn lại kéo theo miniflare 5 alpha làm
  * vỡ toàn bộ bộ kiểm thử. Gọi thẳng Miniflare tránh được cả hai.
@@ -17,6 +17,9 @@
  *   node scripts/chay-server.mjs --khoi-tao --xoa-du-lieu-cu
  *                                                như trên, kể cả khi đã có dữ liệu
  *                                                (sao lưu trước rồi mới xóa)
+ *   node scripts/chay-server.mjs --dat-lai-mat-khau
+ *                                                đặt lại mật khẩu một tài khoản khi
+ *                                                không còn ai đăng nhập được
  *   node scripts/chay-server.mjs --cong 8080     đổi cổng
  *   node scripts/chay-server.mjs --du-lieu <thư mục>   đổi nơi chứa dữ liệu
  */
@@ -44,6 +47,7 @@ const thuMucDuLieuMacDinh = path.join(goc, ".wrangler", "state", "server");
 
 const thamSo = process.argv.slice(2);
 const khoiTao = thamSo.includes("--khoi-tao");
+const datLaiMatKhau = thamSo.includes("--dat-lai-mat-khau");
 const cong = Number(thamSo[thamSo.indexOf("--cong") + 1]) || 3000;
 
 /** Đọc `--ten gia-tri`. Cho phép chạy không cần gõ tay, để kiểm thử được. */
@@ -157,87 +161,149 @@ async function dựngWorker({ moCong }) {
   return mf;
 }
 
-/**
- * Số tài khoản đang có trong cơ sở dữ liệu của chế độ server. Trả 0 khi chưa
- * có bảng nào — tức là chưa từng khởi tạo.
- */
-async function demTaiKhoan() {
-  const mf = await dựngWorker({ moCong: false });
-  try {
-    const db = await mf.getD1Database("DB");
-    const dong = await db.prepare("SELECT count(*) AS n FROM users").first();
-    return Number(dong?.n ?? 0);
-  } catch {
-    return 0;
-  } finally {
-    await mf.dispose();
-  }
-}
-
-/**
- * Chép nguyên thư mục dữ liệu sang một thư mục bên cạnh, trả về đường dẫn.
- *
- * Gọi khi KHÔNG có Miniflare nào đang mở thư mục đó, để bản chép là một ảnh
- * chụp nhất quán của file SQLite.
- */
-async function saoLuu(lyDo) {
-  const dau = new Date().toLocaleString("sv-SE").replace(/[: ]/g, "-");
-  const dich = `${thuMucDuLieu}-sao-luu-${dau}-${lyDo}`;
-  await cp(thuMucDuLieu, dich, { recursive: true });
-  return dich;
-}
-
-const tepDauMigration = path.join(thuMucDuLieu, "migration-da-ap.txt");
-
-/** Dấu vân tay của bộ migration trong mã nguồn hiện tại. */
-async function dauVanTayMigration() {
-  const thuMuc = path.join(goc, "drizzle");
-  const bam = createHash("sha256");
-  for (const ten of (await readdir(thuMuc)).filter((t) => t.endsWith(".sql")).sort()) {
-    bam.update(ten);
-    bam.update(await readFile(path.join(thuMuc, ten)));
-  }
-  return bam.digest("hex");
-}
-
-/**
- * Áp migration mới lên dữ liệu đang có, trước khi mở cổng.
- *
- * Không có bước này thì cập nhật mã nguồn có đổi cấu trúc bảng sẽ chạy trên cơ
- * sở dữ liệu cũ và báo lỗi SQL ngay trên số liệu thật: nhóm route `/api/dev/`
- * — nơi duy nhất gọi migration — bị khóa ở chế độ server.
- *
- * Chỉ chạy khi bộ migration khác lần trước (so dấu vân tay ghi trong thư mục
- * dữ liệu), và sao lưu trước nếu đã có dữ liệu. Migration chạy trong một
- * Miniflare không mở cổng, cùng cách với `--khoi-tao`.
- */
-async function apMigrationNeuCan() {
-  const hienTai = await dauVanTayMigration();
-  const daAp = await readFile(tepDauMigration, "utf8").catch(() => "");
-  if (daAp.trim() === hienTai) return;
-
-  if ((await demTaiKhoan()) > 0) {
-    const banSao = await saoLuu("truoc-cap-nhat");
-    console.log("");
-    console.log("  Mã nguồn có thay đổi cấu trúc dữ liệu. Đã sao lưu trước khi cập nhật:");
-    console.log(`    ${banSao}`);
-  }
-
-  const mf = await dựngWorker({ moCong: false });
-  try {
-    const kq = await mf.dispatchFetch("http://server/api/dev/setup?migrate=true", {
-      method: "POST",
-    });
-    if (!kq.ok) throw new Error(`Cập nhật cấu trúc dữ liệu thất bại: ${await kq.text()}`);
-  } finally {
-    await mf.dispose();
-  }
-  await writeFile(tepDauMigration, hienTai);
-}
-
-/* ---------------------------------------------------------------- */
-
-if (khoiTao) {
+/**
+ * Số tài khoản đang có trong cơ sở dữ liệu của chế độ server. Trả 0 khi chưa
+ * có bảng nào — tức là chưa từng khởi tạo.
+ */
+async function demTaiKhoan() {
+  const mf = await dựngWorker({ moCong: false });
+  try {
+    const db = await mf.getD1Database("DB");
+    const dong = await db.prepare("SELECT count(*) AS n FROM users").first();
+    return Number(dong?.n ?? 0);
+  } catch {
+    return 0;
+  } finally {
+    await mf.dispose();
+  }
+}
+
+/**
+ * Chép nguyên thư mục dữ liệu sang một thư mục bên cạnh, trả về đường dẫn.
+ *
+ * Gọi khi KHÔNG có Miniflare nào đang mở thư mục đó, để bản chép là một ảnh
+ * chụp nhất quán của file SQLite.
+ */
+async function saoLuu(lyDo) {
+  const dau = new Date().toLocaleString("sv-SE").replace(/[: ]/g, "-");
+  const dich = `${thuMucDuLieu}-sao-luu-${dau}-${lyDo}`;
+  await cp(thuMucDuLieu, dich, { recursive: true });
+  return dich;
+}
+
+const tepDauMigration = path.join(thuMucDuLieu, "migration-da-ap.txt");
+
+/** Dấu vân tay của bộ migration trong mã nguồn hiện tại. */
+async function dauVanTayMigration() {
+  const thuMuc = path.join(goc, "drizzle");
+  const bam = createHash("sha256");
+  for (const ten of (await readdir(thuMuc)).filter((t) => t.endsWith(".sql")).sort()) {
+    bam.update(ten);
+    bam.update(await readFile(path.join(thuMuc, ten)));
+  }
+  return bam.digest("hex");
+}
+
+/**
+ * Áp migration mới lên dữ liệu đang có, trước khi mở cổng.
+ *
+ * Không có bước này thì cập nhật mã nguồn có đổi cấu trúc bảng sẽ chạy trên cơ
+ * sở dữ liệu cũ và báo lỗi SQL ngay trên số liệu thật: nhóm route `/api/dev/`
+ * — nơi duy nhất gọi migration — bị khóa ở chế độ server.
+ *
+ * Chỉ chạy khi bộ migration khác lần trước (so dấu vân tay ghi trong thư mục
+ * dữ liệu), và sao lưu trước nếu đã có dữ liệu. Migration chạy trong một
+ * Miniflare không mở cổng, cùng cách với `--khoi-tao`.
+ */
+async function apMigrationNeuCan() {
+  const hienTai = await dauVanTayMigration();
+  const daAp = await readFile(tepDauMigration, "utf8").catch(() => "");
+  if (daAp.trim() === hienTai) return;
+
+  if ((await demTaiKhoan()) > 0) {
+    const banSao = await saoLuu("truoc-cap-nhat");
+    console.log("");
+    console.log("  Mã nguồn có thay đổi cấu trúc dữ liệu. Đã sao lưu trước khi cập nhật:");
+    console.log(`    ${banSao}`);
+  }
+
+  const mf = await dựngWorker({ moCong: false });
+  try {
+    const kq = await mf.dispatchFetch("http://server/api/dev/setup?migrate=true", {
+      method: "POST",
+    });
+    if (!kq.ok) throw new Error(`Cập nhật cấu trúc dữ liệu thất bại: ${await kq.text()}`);
+  } finally {
+    await mf.dispose();
+  }
+  await writeFile(tepDauMigration, hienTai);
+}
+
+/* ---------------------------------------------------------------- */
+
+if (datLaiMatKhau) {
+  // Cứu hộ khi chủ nhà duy nhất quên mật khẩu: không ai cấp được link đặt lại,
+  // nên phải sửa thẳng cơ sở dữ liệu. Làm ngay trong tiến trình này, trên đúng
+  // file SQLite mà server dùng — lệnh `wrangler d1 execute --local` mở một file
+  // khác và báo thành công trong khi không đổi gì.
+  const sanCo = { email: thamSoChuoi("email"), matKhau: thamSoChuoi("mat-khau") };
+  const hỏi =
+    sanCo.email && sanCo.matKhau
+      ? null
+      : createInterface({ input: process.stdin, output: process.stdout });
+
+  console.log("");
+  console.log("  Đặt lại mật khẩu cho một tài khoản của chế độ server.");
+  console.log("  Tắt server (chay-server.bat) trước khi làm bước này.");
+  console.log(`  Thư mục dữ liệu: ${thuMucDuLieu}`);
+  console.log("");
+
+  const email = (sanCo.email ?? (await hỏi.question("  Email hoặc tên đăng nhập: ")))
+    .trim()
+    .toLowerCase();
+  const matKhau = sanCo.matKhau ?? (await hỏi.question("  Mật khẩu mới (ít nhất 8 ký tự): "));
+  hỏi?.close();
+
+  if (matKhau.length < 8) {
+    console.error("\n  [LỖI] Mật khẩu phải có ít nhất 8 ký tự.\n");
+    process.exit(1);
+  }
+
+  // Dùng chung hàm băm với máy chủ để định dạng chắc chắn khớp.
+  const { hashPassword } = await import("../db/password-hash.ts");
+  const mf = await dựngWorker({ moCong: false });
+  try {
+    const db = await mf.getD1Database("DB");
+    const taiKhoan = await db.prepare("SELECT id FROM users WHERE email = ?").bind(email).first();
+    if (!taiKhoan) throw new Error(`Không có tài khoản nào tên "${email}".`);
+
+    await db
+      .prepare("UPDATE users SET password_hash = ?, updated_at = unixepoch() * 1000 WHERE id = ?")
+      .bind(await hashPassword(matKhau), taiKhoan.id)
+      .run();
+    // Thu hồi mọi phiên cũ: nếu mật khẩu bị lộ thì người kia cũng bị đẩy ra.
+    await db.prepare("DELETE FROM sessions WHERE user_id = ?").bind(taiKhoan.id).run();
+
+    const thu = await mf.dispatchFetch("http://server/api/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json", "cf-connecting-ip": "127.0.0.1" },
+      body: JSON.stringify({ email, password: matKhau }),
+    });
+    // Tài khoản bật xác thực hai bước sẽ được hỏi mã chứ không vào thẳng; cả
+    // hai đều nghĩa là mật khẩu mới đã được nhận.
+    if (thu.status !== 200) throw new Error("Đã ghi nhưng đăng nhập thử không được.");
+
+    console.log("");
+    console.log(`  Xong. Đã đặt lại mật khẩu cho ${email} và đăng xuất mọi thiết bị cũ.`);
+    console.log("  Chạy lại server rồi đổi mật khẩu ở trang Cài đặt.");
+    console.log("");
+  } catch (loi) {
+    console.error(`\n  [LỖI] ${loi.message}\n`);
+    process.exitCode = 1;
+  } finally {
+    await mf.dispose();
+  }
+} else if (khoiTao) khoiTaoBlock: {
   const sanCo = {
     email: thamSoChuoi("email"),
     hoTen: thamSoChuoi("ho-ten"),
@@ -262,7 +328,10 @@ if (khoiTao) {
     console.log("    node scripts/chay-server.mjs --khoi-tao --xoa-du-lieu-cu");
     console.log("  (lệnh đó sao lưu dữ liệu cũ sang thư mục bên cạnh rồi mới xóa)");
     console.log("");
-    process.exit(1);
+    // Không gọi process.exit ở đây: thoát đột ngột ngay sau khi Miniflare vừa
+    // đóng làm tiến trình sập trên Windows thay vì trả mã lỗi 1.
+    process.exitCode = 1;
+    break khoiTaoBlock;
   }
 
   const hỏi = đủThamSố

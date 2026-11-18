@@ -6,15 +6,15 @@ PostgreSQL nằm ở [DEPLOYMENT.md](DEPLOYMENT.md) và chưa được áp dụn
 > **Mức độ kiểm chứng.** Các bước dựng cấu hình, áp migration và tạo tài khoản
 > chủ nhà đầu tiên đã được chạy thật ở máy local (D1 của Miniflare) và cho kết
 > quả đúng. Các bước cần tài khoản Cloudflare — `login`, `d1 create`, `deploy`
-> thật, tên miền riêng — chưa chạy được vì cần thông tin đăng nhập của chủ dự
-> án. Chỗ nào chưa kiểm chứng đều được ghi rõ.
+> thật, tên miền riêng — chưa được tác giả chạy trên tài khoản thật. Chỗ nào
+> chưa kiểm chứng đều được ghi rõ; gặp sai khác thì báo lại qua issue.
 
 ## 0. Trước khi bắt đầu
 
 Cần có:
 
 - Tài khoản Cloudflare (gói Free là đủ cho 40 phòng).
-- Node.js `>=22.13.0`.
+- Node.js `>=22.18.0`.
 - Kho mã sạch: `npm test` và `npm run lint` đều xanh.
 
 Kích thước bản build hiện tại là **1164 KiB, nén gzip còn 314 KiB** — dưới xa
@@ -106,9 +106,9 @@ khoản đầu tiên phải tạo trực tiếp:
 npm run create-owner -- "chunha@nhatro.vn" "Trần Văn A" "mat khau that cua ban" "0901234567"
 ```
 
-Script in ra hai lệnh `wrangler d1 execute` đã ghép sẵn — một cho Cloudflare,
-một cho cơ sở dữ liệu local. Lấy lệnh dưới mục **"Trên Cloudflare"**, thay
-`<TEN_DATABASE>` bằng `room-manager`, rồi chạy.
+Script ghi câu lệnh SQL vào file `tao-chu-nha.sql` và in ra lệnh
+`wrangler d1 execute ... --file=tao-chu-nha.sql`. Thay `<TEN_DATABASE>` bằng
+`room-manager` rồi chạy, xong thì xóa file đó (nó chứa chuỗi băm mật khẩu).
 
 Dữ liệu mẫu không bao giờ được nạp lên đây. `npm run db:setup` và
 `reset-data.bat` chỉ chạy được với server dev ở máy, và tài khoản mẫu
@@ -235,7 +235,7 @@ HTTPS nên không cần đổi gì trong mã.
 
 ## 9. Sao lưu
 
-D1 có sẵn **Time Travel**, giữ lại 30 ngày trên gói Free — khôi phục được về bất
+D1 có sẵn **Time Travel**, giữ lại 7 ngày trên gói Free và 30 ngày trên gói trả phí (kiểm tra lại con số ở tài liệu Cloudflare, họ có thể đổi) — khôi phục được về bất
 kỳ thời điểm nào trong khoảng đó:
 
 ```bash

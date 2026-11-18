@@ -27,11 +27,11 @@ Các ràng buộc nghiệp vụ đang được kiểm thử tự động: không
 
 - Hệ thống soạn sẵn tin nhắc nợ nhưng **chưa tự gửi** cho khách: Zalo OA phải duyệt hồ sơ, SMS và email đều cần tài khoản dịch vụ trả phí.
 - Chưa chốt nền tảng lâu dài: đang chạy Cloudflare D1, phương án VPS/PostgreSQL vẫn để ngỏ.
-- Chưa cấu hình tên miền hay môi trường chạy thật; mới chạy ở máy local. Hướng dẫn đưa lên Cloudflare có ở [docs/DEPLOY-CLOUDFLARE.md](docs/DEPLOY-CLOUDFLARE.md).
+- Tên miền và môi trường chạy thật do người triển khai tự cấu hình. Hướng dẫn đưa lên Cloudflare có ở [docs/DEPLOY-CLOUDFLARE.md](docs/DEPLOY-CLOUDFLARE.md).
 
 ## Chạy tại máy
 
-Yêu cầu Node.js `>=22.13.0`.
+Yêu cầu Node.js `>=22.18.0`.
 
 Có hai kiểu chạy, đừng trộn lẫn:
 
@@ -133,7 +133,7 @@ Route `/api/dev/setup` mặc định bị khóa ngoài môi trường dev; bản
 npm test
 ```
 
-Chạy typecheck, build, rồi kiểm thử bản build trong Miniflare (workerd thật kèm D1 thật): 136 bài, gồm xác thực, quyền truy cập, ràng buộc nghiệp vụ và kiểm tra trang công khai không lộ dữ liệu khách thuê.
+Chạy typecheck, build, rồi kiểm thử bản build trong Miniflare (workerd thật kèm D1 thật): hơn 150 bài, gồm xác thực, quyền truy cập, ràng buộc nghiệp vụ và kiểm tra trang công khai không lộ dữ liệu khách thuê.
 
 ```bash
 npm run lint
@@ -158,11 +158,19 @@ Link không tự đăng nhập — đặt xong vẫn phải đăng nhập bình 
 
 Lúc đó không ai cấp được link, phải sửa thẳng cơ sở dữ liệu:
 
+Bản chạy trên máy (`chay-server.bat`): tắt server rồi chạy lệnh dưới, nó hỏi tên đăng nhập và mật khẩu mới, ghi thẳng vào đúng cơ sở dữ liệu server đang dùng và đăng xuất mọi thiết bị cũ.
+
 ```bash
-npm run hash-password "mat khau moi cua ban"
+node scripts/chay-server.mjs --dat-lai-mat-khau
 ```
 
-Script in ra chuỗi băm kèm câu lệnh `wrangler d1 execute` để dán. Nó dùng chung module băm với máy chủ nên định dạng chắc chắn khớp — có bài kiểm thử đối chiếu giữa Node và workerd. Đăng nhập lại xong nhớ đổi mật khẩu ở trang Cài đặt.
+Bản trên Cloudflare:
+
+```bash
+npm run hash-password "mat khau moi cua ban" "email-tai-khoan"
+```
+
+Script ghi câu lệnh SQL vào file `dat-lai-mat-khau.sql` rồi in ra lệnh `wrangler d1 execute --file` để chạy. Nó dùng chung module băm với máy chủ nên định dạng chắc chắn khớp — có bài kiểm thử đối chiếu giữa Node và workerd. Chạy xong thì xóa file đó, đăng nhập lại và đổi mật khẩu ở trang Cài đặt.
 
 Cách phòng tránh tốt hơn: **luôn có ít nhất hai tài khoản chủ nhà**, để người này cấp link cho người kia.
 
@@ -172,7 +180,7 @@ Cách phòng tránh tốt hơn: **luôn có ít nhất hai tài khoản chủ nh
 npm run db:generate
 ```
 
-Sinh migration mới vào `drizzle/`. Khi deploy, control plane tự áp SQL này lên D1 thật; ở máy local thì `npm run db:setup` lo việc đó.
+Sinh migration mới vào `drizzle/`. Trên Cloudflare, áp lên D1 thật bằng `npm run deploy:migrate`; ở chế độ server trên máy, `chay-server` tự áp lúc khởi động (sao lưu trước); còn `npm run dev` thì `npm run db:setup` lo việc đó.
 
 ## Cấu trúc
 

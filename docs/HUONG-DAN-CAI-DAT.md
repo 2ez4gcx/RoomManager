@@ -33,7 +33,7 @@ dùng tạm vài ngày. Dùng lâu dài mà để dữ liệu trên một ổ c�
 
 ## Chuẩn bị chung
 
-Cần cài **Node.js** phiên bản 22.13 trở lên:
+Cần cài **Node.js** phiên bản 22.18 trở lên:
 
 1. Vào <https://nodejs.org>, tải bản **LTS**.
 2. Cài như phần mềm bình thường, bấm Next tới hết, không đổi gì.
@@ -262,14 +262,22 @@ Phần mềm **không gửi email**. Cách xử lý:
 vào trang *Tài khoản*, bấm *Link quên mật khẩu* ở dòng của người quên, rồi gửi
 link qua Zalo. Link sống một giờ, dùng một lần.
 
-**Tất cả tài khoản chủ nhà đều quên:** phải sửa thẳng cơ sở dữ liệu. Chạy:
+**Tất cả tài khoản chủ nhà đều quên:** phải sửa thẳng cơ sở dữ liệu.
+
+Kiểu một máy tính: tắt cửa sổ server, mở Command Prompt trong thư mục phần mềm
+rồi chạy lệnh dưới. Nó hỏi tên đăng nhập và mật khẩu mới.
 
 ```bash
-npm run hash-password "mat khau moi cua ban"
+node scripts/chay-server.mjs --dat-lai-mat-khau
 ```
 
-Rồi làm theo hướng dẫn nó in ra. Đây là lý do **luôn phải có hai tài khoản chủ
-nhà**.
+Kiểu Cloudflare: chạy lệnh dưới rồi làm theo hướng dẫn nó in ra.
+
+```bash
+npm run hash-password "mat khau moi cua ban" "email-tai-khoan"
+```
+
+Đây là lý do **luôn phải có hai tài khoản chủ nhà**.
 
 ---
 

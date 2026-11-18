@@ -13,7 +13,7 @@ git archive --format=zip HEAD -o RoomManager.zip
 
 `git archive` chỉ lấy những file đang được git theo dõi. Đây là điểm mấu chốt:
 nó **không thể** vô tình gói kèm dữ liệu, vì mọi thứ nhạy cảm đều nằm trong
-`.gitignore`. Kết quả khoảng 1,5 MB, 202 file.
+`.gitignore`. Kết quả khoảng 1,5 MB.
 
 Đừng nén thư mục bằng chuột phải → *Send to* → *Compressed folder*. Cách đó gói
 kèm cả những thứ dưới đây.
@@ -23,7 +23,7 @@ kèm cả những thứ dưới đây.
 | | Vì sao |
 |---|---|
 | `.wrangler/` | **Chứa dữ liệu của chính bạn** — tên khách thuê, số điện thoại, công nợ, mật khẩu đã băm. Gửi nhầm là lộ thông tin cá nhân của khách thuê nhà bạn. |
-| `.git/` | Toàn bộ lịch sử sửa đổi, gồm cả mật khẩu tài khoản dữ liệu mẫu ở các commit cũ. |
+| `.git/` | Toàn bộ lịch sử sửa đổi; khách dùng phần mềm không cần tới. |
 | `.env`, `node_modules/` | File cấu hình riêng và 400 MB thư viện khách tự cài được. |
 
 Kiểm tra lại gói trước khi gửi:
@@ -78,8 +78,8 @@ Cloudflare, xem [DEPLOY-CLOUDFLARE.md](DEPLOY-CLOUDFLARE.md). Nên hỏi rõ nhu
 cầu này ngay từ đầu để khách chọn đúng kiểu cài, khỏi nhập dữ liệu hai lần.
 
 **"Quên mật khẩu rồi"** — Nếu còn một tài khoản chủ nhà đăng nhập được thì tự
-cấp link ở trang *Tài khoản*. Nếu mất hết thì cần `npm run hash-password` và sửa
-thẳng cơ sở dữ liệu.
+cấp link ở trang *Tài khoản*. Nếu mất hết thì phải sửa thẳng cơ sở dữ liệu: xem mục
+*Quên mật khẩu* trong HUONG-DAN-CAI-DAT.md.
 
 **"Mất dữ liệu rồi"** — Kiểu một máy tính: chỉ cứu được nếu họ có bản sao lưu
 thư mục `.wrangler\\state\\server` — đó là số liệu thật;

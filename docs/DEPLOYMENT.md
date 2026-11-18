@@ -31,7 +31,7 @@ Với 40 phòng, VPS 2 vCPU, 4 GB RAM và SSD 40–80 GB thường là đủ cho
 
 1. Tạo user hệ thống không phải `root`, bật đăng nhập SSH bằng key và tắt đăng nhập mật khẩu sau khi xác nhận key hoạt động.
 2. Cài Docker/Compose và reverse proxy.
-3. Clone source từ repository riêng khi chủ dự án đã yêu cầu đưa lên GitHub.
+3. Clone source từ repository GitHub của dự án.
 4. Tạo `.env` trực tiếp trên VPS từ `.env.example`; không commit file này.
 5. Khởi động PostgreSQL, chạy migration, sau đó khởi động ứng dụng.
 6. Cấu hình reverse proxy tới cổng nội bộ của app và cấp HTTPS tự động.

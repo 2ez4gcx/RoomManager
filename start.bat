@@ -16,7 +16,7 @@ rem --- Kiem tra Node.js ---------------------------------------------------
 where node >nul 2>&1
 if errorlevel 1 (
   echo  [LOI] Khong tim thay Node.js tren may.
-  echo  Cai dat Node.js 22.13 tro len tai https://nodejs.org roi chay lai file nay.
+  echo  Cai dat Node.js 22.18 tro len tai https://nodejs.org roi chay lai file nay.
   echo.
   pause
   exit /b 1
@@ -24,7 +24,7 @@ if errorlevel 1 (
 
 for /f "tokens=1 delims=." %%v in ('node -p "process.versions.node"') do set NODE_MAJOR=%%v
 if !NODE_MAJOR! LSS 22 (
-  echo  [LOI] Du an can Node.js 22.13 tro len.
+  echo  [LOI] Du an can Node.js 22.18 tro len.
   echo  Phien ban dang cai:
   node -v
   echo.

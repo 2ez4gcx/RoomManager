@@ -50,8 +50,9 @@ function alreadyApplied(error: unknown) {
 /**
  * Áp migration lên D1 cục bộ.
  *
- * Trên môi trường thật, control plane đã chạy SQL của drizzle khi deploy; hàm
- * này chỉ để `npm run dev` có sẵn bảng mà không cần cấu hình wrangler riêng.
+ * Trên Cloudflare, migration được áp bằng `npm run deploy:migrate`. Hàm này
+ * dùng cho `npm run dev` và cho chế độ server trên máy (`chay-server` gọi lúc
+ * khởi động), nơi không có wrangler đứng ra áp.
  * Câu lệnh nào báo "already exists" thì bỏ qua để gọi lại nhiều lần vẫn an toàn.
  */
 export async function applyMigrations(db: ReturnType<typeof getDb>) {

@@ -15,6 +15,7 @@
  *
  *   node scripts/create-owner.ts "email@nhatro.vn" "Họ Tên" "mật khẩu" [số điện thoại]
  */
+import { writeFile } from "node:fs/promises";
 import { hashPassword } from "../db/password-hash.ts";
 
 const [email, fullName, password, phone] = process.argv.slice(2);
@@ -57,16 +58,23 @@ const sql = [
   ");",
 ].join(" ");
 
-const escaped = sql.replaceAll('"', '\\"');
+// Ghi ra file thay vì in một lệnh `--command "..."` để dán: chuỗi băm có dạng
+// `pbkdf2$100000$...`, và trong nháy kép cả bash lẫn PowerShell đều coi `$...`
+// là biến rồi thay bằng chuỗi rỗng. Lệnh vẫn báo thành công, nhưng mật khẩu
+// lưu vào là một chuỗi băm hỏng và không ai đăng nhập được.
+const sqlFile = "tao-chu-nha.sql";
+await writeFile(sqlFile, `${sql}\n`, "utf8");
 
 console.log("");
-console.log("Chạy lệnh sau để tạo tài khoản trên cơ sở dữ liệu thật ở Cloudflare:");
+console.log(`Đã ghi câu lệnh tạo tài khoản vào file ${sqlFile}.`);
+console.log("Chạy lệnh sau để áp lên cơ sở dữ liệu thật ở Cloudflare:");
 console.log("");
-console.log(`  npx wrangler d1 execute <TEN_DATABASE> --remote --command "${escaped}"`);
+console.log(`  npx wrangler d1 execute <TEN_DATABASE> --remote --file=${sqlFile}`);
 console.log("");
-console.log("Muốn tạo tài khoản cho bản chạy ở máy thì đừng dùng lệnh trên với --local:");
-console.log("wrangler có thể mở một file SQLite khác với file mà npm run dev đang dùng,");
-console.log("và khi đó nó vẫn báo thành công. Chạy khoi-tao-that.bat để chắc chắn.");
+console.log(`Chạy xong thì XÓA file ${sqlFile}: nó chứa chuỗi băm mật khẩu.`);
+console.log("");
+console.log("Bản chạy ở máy (chay-server.bat) thì không dùng lệnh trên: wrangler mở một");
+console.log("file SQLite khác với file server đang dùng. Chạy khoi-tao-that.bat.");
 console.log("");
 console.log(`Đăng nhập:  ${login}  /  (mật khẩu vừa nhập)`);
 console.log("");

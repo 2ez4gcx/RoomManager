@@ -1,9 +1,9 @@
 /**
  * Dựng bảng và nạp dữ liệu mẫu cho D1 cục bộ.
  *
- * Chỉ dùng khi phát triển. Trên môi trường thật, control plane đã áp migration
- * lúc deploy và dữ liệu là dữ liệu thật của chủ nhà, nên route này tự khóa lại
- * trừ khi được bật rõ ràng bằng biến môi trường `ALLOW_DEV_SETUP`.
+ * Chỉ dùng khi phát triển và khi `chay-server` khởi tạo/cập nhật dữ liệu trong
+ * một tiến trình không mở cổng mạng. Trên bản chạy thật route này tự khóa, trừ
+ * khi được bật rõ ràng bằng biến môi trường `ALLOW_DEV_SETUP`.
  */
 import { getDb } from "../../../../db";
 import { applyMigrations } from "../../../../db/migrate";
@@ -18,8 +18,8 @@ export async function POST(request: Request) {
   // Khởi tạo trống: dựng bảng, xóa sạch, KHÔNG nạp dữ liệu mẫu. Dùng khi bắt
   // đầu nhập dữ liệu thật của nhà trọ.
   const empty = params.get("empty") === "true";
-  // Chỉ áp migration, không đụng tới một dòng dữ liệu nào. `start.bat` gọi chế
-  // độ này mỗi lần khởi động khi máy đang chứa dữ liệu thật.
+  // Chỉ áp migration, không đụng tới một dòng dữ liệu nào. `chay-server` gọi
+  // chế độ này lúc khởi động khi mã nguồn có migration mới.
   const migrateOnly = params.get("migrate") === "true";
 
   try {
