@@ -403,6 +403,22 @@ test("mật khẩu đúng cũng bị chặn khi đang trong thời gian khóa", 
   assert.equal(response.status, 429);
 });
 
+test("dò một tài khoản từ nhiều IP vẫn bị chặn ở ngưỡng tổng", async () => {
+  // Mỗi IP chỉ thử 2 lần nên không chạm ngưỡng theo cặp hay theo IP. Dùng một
+  // định danh riêng để không khóa tài khoản mà các bài khác đăng nhập.
+  const target = "nan-nhan-do-mat-khau@example.com";
+  let blockedAt = null;
+  for (let attempt = 1; attempt <= 70 && blockedAt === null; attempt += 1) {
+    const ip = `198.18.${Math.floor(attempt / 2)}.${10 + (attempt % 2)}`;
+    const response = await loginFrom(ip, target, "sai");
+    if (response.status === 429) blockedAt = attempt;
+  }
+  assert.equal(blockedAt, 61, "phải chặn đúng sau 60 lượt sai cộng trên mọi IP");
+
+  // Chỉ định danh đó bị hoãn; tài khoản khác từ một IP mới vẫn vào được.
+  assert.equal((await loginFrom("198.18.200.1", OWNER_EMAIL, OWNER_PASSWORD)).status, 200);
+});
+
 test("khóa chỉ áp cho cặp tài khoản và IP đó, không khóa người dùng thật", async () => {
   const attacker = "203.0.113.12";
   for (let attempt = 0; attempt < 6; attempt += 1) {
@@ -647,7 +663,19 @@ test("thuật toán TOTP khớp vector kiểm thử của RFC 6238", async () =>
 });
 
 test("bật hai bước cần xác nhận bằng mã đúng, sai thì không bật", async () => {
-  const begin = await authed("/api/auth/two-factor", { method: "POST" });
+  // Bắt đầu cài đặt phải nhập lại mật khẩu: phiên đang mở là chưa đủ.
+  const noPassword = await authed("/api/auth/two-factor", { method: "POST" });
+  assert.equal(noPassword.status, 400);
+  const wrongPassword = await json("/api/auth/two-factor", { password: "sai-mat-khau" });
+  assert.equal(wrongPassword.status, 400);
+  assert.match((await wrongPassword.json()).error, /Mật khẩu không đúng/);
+  assert.equal(
+    (await (await authed("/api/auth/two-factor")).json()).pending,
+    false,
+    "sai mật khẩu mà vẫn sinh khóa",
+  );
+
+  const begin = await json("/api/auth/two-factor", { password: OWNER_PASSWORD });
   assert.equal(begin.status, 201);
 
   const { secret, otpauthUri, qrMatrix } = await begin.json();

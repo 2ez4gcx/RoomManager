@@ -5,15 +5,25 @@
  * không cần ai mở khóa thủ công — quan trọng với hệ thống một chủ nhà, vì khóa
  * vĩnh viễn mà không có kênh khôi phục thì chính chủ cũng chịu.
  *
- * Có hai ngưỡng:
+ * Có ba ngưỡng:
  *
- * 1. Theo cặp (định danh + IP): chặn dò mật khẩu của một tài khoản cụ thể.
- *    Cố ý KHÔNG khóa theo riêng tài khoản, vì khi đó người ngoài chỉ cần biết
- *    email của chủ nhà là nhập sai liên tục để khóa chủ nhà ra khỏi hệ thống.
- *    Gắn thêm IP thì kẻ tấn công không làm phiền được người dùng thật.
+ * 1. Theo cặp (định danh + IP), ngưỡng thấp: chặn dò mật khẩu của một tài
+ *    khoản từ một máy. Gắn IP để người ngoài nhập sai vài lần không làm phiền
+ *    được người dùng thật đang ngồi ở máy khác.
  *
  * 2. Theo IP: chặn kiểu rải một mật khẩu phổ biến lên nhiều tài khoản từ cùng
  *    một máy — kiểu tấn công mà ngưỡng thứ nhất không bắt được.
+ *
+ * 3. Theo riêng tài khoản trên MỌI IP, ngưỡng cao: hai ngưỡng trên đều đếm
+ *    theo IP, nên kẻ có sẵn nhiều địa chỉ (dải IPv6, mạng proxy) được 5 lượt
+ *    mỗi địa chỉ, tức là không giới hạn. Ngưỡng này đặt trần cho tổng số lượt.
+ *
+ *    Cái giá: ai biết email của chủ nhà và chịu gửi đủ ngần ấy lần sai mỗi 15
+ *    phút thì giữ được tài khoản ở trạng thái tạm khóa. Vì vậy ngưỡng đặt cao
+ *    hơn hẳn ngưỡng 1 — người gõ nhầm không bao giờ chạm tới — và phiên đang
+ *    đăng nhập không bị ảnh hưởng: chủ nhà vẫn làm việc bình thường, chỉ lần
+ *    đăng nhập MỚI bị hoãn tới khi đợt tấn công ngừng. Đổi lại, dò mật khẩu bị
+ *    kìm ở mức vài nghìn lượt mỗi ngày thay vì vô hạn.
  */
 import { and, eq, gte, lt, sql } from "drizzle-orm";
 import { getDb } from "./index";
@@ -28,6 +38,9 @@ export const MAX_ATTEMPTS_PER_ACCOUNT = 5;
 
 /** Số lần sai tối đa cho một IP trong cửa sổ, tính trên mọi định danh. */
 export const MAX_ATTEMPTS_PER_IP = 20;
+
+/** Số lần sai tối đa cho một định danh trong cửa sổ, cộng trên mọi IP. */
+export const MAX_ATTEMPTS_PER_ACCOUNT_ALL_IPS = 60;
 
 /**
  * Định danh dành riêng cho lượt gửi biểu mẫu đặt phòng công khai. Có ký tự `@`
@@ -132,8 +145,18 @@ export async function registerAttempt(
     )
     .limit(1);
 
+  const [perAccountAllIps] = await db
+    .select({
+      count: sql<number>`count(*)`,
+      oldest: sql<number>`min(${loginAttempts.createdAt})`,
+    })
+    .from(loginAttempts)
+    .where(and(eq(loginAttempts.identifier, key), gte(loginAttempts.createdAt, since)));
+
   const accountCount = Number(perAccount?.count ?? 0);
   const ipCount = Number(perIp?.count ?? 0);
+  const accountEverywhereBlocked =
+    Number(perAccountAllIps?.count ?? 0) > MAX_ATTEMPTS_PER_ACCOUNT_ALL_IPS;
 
   // So sánh `>` chứ không phải `>=`: bản ghi của chính lần thử này đã nằm
   // trong bộ đếm, nên MAX_ATTEMPTS_PER_ACCOUNT vẫn đúng nghĩa "cho phép sai
@@ -141,7 +164,7 @@ export async function registerAttempt(
   const accountBlocked = accountCount > MAX_ATTEMPTS_PER_ACCOUNT;
   const ipBlocked = ipCount > MAX_ATTEMPTS_PER_IP;
 
-  if (!accountBlocked && !ipBlocked) {
+  if (!accountBlocked && !ipBlocked && !accountEverywhereBlocked) {
     return {
       attemptId,
       blocked: false,
@@ -152,7 +175,11 @@ export async function registerAttempt(
 
   // Hết khóa khi lần sai cũ nhất trong cửa sổ trôi ra ngoài cửa sổ.
   const oldest = Number(
-    (accountBlocked ? perAccount?.oldest : perIp?.oldest) ?? Date.now(),
+    (accountBlocked
+      ? perAccount?.oldest
+      : ipBlocked
+        ? perIp?.oldest
+        : perAccountAllIps?.oldest) ?? Date.now(),
   );
   const unlockAt = oldest + THROTTLE_WINDOW_MS;
 

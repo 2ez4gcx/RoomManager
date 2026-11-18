@@ -128,15 +128,28 @@ phòng sẽ hiện lại "Đã giữ" do một chỗ giữ cũ đã hết ý ngh
 
 ## Giới hạn số lần đăng nhập sai
 
-`login_attempts` đếm lần nhập sai trong cửa sổ trượt 15 phút. Hai ngưỡng:
+`login_attempts` đếm lần nhập sai trong cửa sổ trượt 15 phút. Ba ngưỡng:
 
 - 5 lần cho một cặp (định danh + IP).
 - 20 lần cho một IP, tính trên mọi định danh — bắt kiểu rải một mật khẩu phổ
   biến lên nhiều tài khoản.
+- 60 lần cho một định danh, cộng trên **mọi** IP — đặt trần cho kẻ có sẵn nhiều
+  địa chỉ (dải IPv6, mạng proxy), vốn được 5 lượt mỗi địa chỉ theo hai ngưỡng
+  trên.
 
-Cố ý **không** khóa theo riêng tài khoản: khi đó người ngoài chỉ cần biết email
-của chủ nhà là nhập sai liên tục để khóa chính chủ ra khỏi hệ thống. Gắn thêm IP
-thì kẻ tấn công chỉ tự khóa mình.
+Ngưỡng thứ ba là một đánh đổi có chủ ý: ai biết email của chủ nhà và chịu gửi
+hơn 60 lần sai mỗi 15 phút thì giữ được tài khoản ở trạng thái tạm khóa. Ngưỡng
+đặt cao để người gõ nhầm không bao giờ chạm tới, và phiên đang đăng nhập không
+bị ảnh hưởng — chỉ lần đăng nhập mới bị hoãn tới khi đợt tấn công ngừng. Đổi
+lại, dò mật khẩu bị kìm ở vài nghìn lượt mỗi ngày thay vì không giới hạn. Khi
+deploy lên Cloudflare, nên thêm một rate-limit rule cho `/api/auth/login` ở tầng
+Cloudflare để chặn sớm hơn nữa.
+
+Cùng bảng này còn đếm ba thứ khác, định danh bắt đầu bằng `@` nên không lẫn với
+tên đăng nhập và không tính vào ngưỡng theo IP của đăng nhập: lượt gửi biểu mẫu
+đặt phòng công khai (10 lượt mỗi IP), và các bước xác minh sau khi đã đăng nhập
+— mật khẩu lúc bật hai bước, mã lúc bật/tắt hai bước, mật khẩu hiện tại lúc đổi
+mật khẩu (10 lần sai mỗi tài khoản).
 
 Khóa tự hết sau cửa sổ, không cần ai mở thủ công — hệ thống chỉ có một chủ nhà
 và chưa có kênh khôi phục nào khác.
@@ -186,6 +199,10 @@ SMS hay email nào.
 Thuật toán chuẩn dùng HMAC-SHA1. SHA-1 đã yếu với bài toán chống va chạm nhưng
 HMAC-SHA1 thì chưa bị phá, và đổi sang SHA-256 sẽ không quét được bằng ứng dụng
 phổ thông.
+
+Bắt đầu cài đặt phải **nhập lại mật khẩu**: một phiên đang mở là chưa đủ, nếu
+không ai cầm được phiên đó sẽ gắn ứng dụng xác thực của họ vào tài khoản và đẩy
+chủ thật ra ngoài.
 
 Bật gồm **hai bước**: `users.totp_secret` được ghi khi sinh khóa, nhưng
 `users.totp_enabled_at` — cờ "đã bật" thật sự — chỉ được đặt sau khi người dùng

@@ -9,6 +9,7 @@ import { and, eq, isNull, sql } from "drizzle-orm";
 import { getDb } from "./index";
 import { newId } from "./ids";
 import { ValidationError, writeAudit } from "./internal";
+import { verifyPassword } from "./password-hash";
 import { recoveryCodes, users } from "./schema";
 import { qrMatrix } from "./qr";
 import { generateTotpSecret, otpauthUri, verifyTotp } from "./totp";
@@ -70,18 +71,30 @@ export async function twoFactorStatus(userId: string): Promise<TwoFactorStatus> 
  *
  * Chưa bật gì cả. Gọi lại sẽ sinh khóa khác, dùng khi người dùng làm dở giữa
  * chừng rồi bắt đầu lại.
+ *
+ * Bắt nhập lại mật khẩu. Không có bước này thì ai cầm được một phiên đang mở
+ * (máy quên khóa, cookie bị lấy) gắn được ứng dụng xác thực CỦA HỌ vào tài
+ * khoản: chủ tài khoản thật bị đẩy ra ở lần đăng nhập kế tiếp và không tự vào
+ * lại được, vì mã hai bước nằm trên điện thoại của người kia.
  */
-export async function beginTwoFactorSetup(userId: string) {
+export async function beginTwoFactorSetup(userId: string, password: string) {
   const db = getDb();
 
   const [user] = await db
-    .select({ email: users.email, totpEnabledAt: users.totpEnabledAt })
+    .select({
+      email: users.email,
+      passwordHash: users.passwordHash,
+      totpEnabledAt: users.totpEnabledAt,
+    })
     .from(users)
     .where(eq(users.id, userId))
     .limit(1);
   if (!user) throw new ValidationError("Không tìm thấy tài khoản.", "userId");
   if (user.totpEnabledAt) {
     throw new ValidationError("Xác thực hai bước đã được bật rồi.", "totp");
+  }
+  if (!password || !(await verifyPassword(password, user.passwordHash))) {
+    throw new ValidationError("Mật khẩu không đúng.", "password");
   }
 
   const secret = generateTotpSecret();

@@ -317,14 +317,20 @@ function TwoFactorModal({
     qrMatrix: string[];
   } | null>(null);
   const [codes, setCodes] = useState<string[] | null>(null);
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
-  async function begin() {
+  async function begin(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     setError("");
     setBusy(true);
     try {
-      const response = await fetch("/api/auth/two-factor", { method: "POST" });
+      const response = await fetch("/api/auth/two-factor", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ password }),
+      });
       const payload = (await response.json()) as {
         secret?: string;
         otpauthUri?: string;
@@ -335,6 +341,7 @@ function TwoFactorModal({
         setError(payload.error ?? "Không tạo được khóa.");
         return;
       }
+      setPassword("");
       setSetup({
         secret: payload.secret!,
         otpauthUri: payload.otpauthUri!,
@@ -456,16 +463,26 @@ function TwoFactorModal({
           </button>
         </form>
       ) : (
-        <div>
+        <form onSubmit={begin}>
           <p className="modal-hint">
             Sau khi bật, đăng nhập sẽ cần mật khẩu và mã 6 số đổi mỗi 30 giây trên
             điện thoại. Bạn sẽ nhận 8 mã khôi phục dùng khi mất máy.
           </p>
+          <label>
+            Nhập lại mật khẩu để tiếp tục
+            <input
+              type="password"
+              autoComplete="current-password"
+              required
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+            />
+          </label>
           {error && <p className="form-error" role="alert">{error}</p>}
-          <button className="submit-button" type="button" onClick={begin} disabled={busy}>
+          <button className="submit-button" type="submit" disabled={busy}>
             <ShieldCheck size={16} /> {busy ? "Đang tạo khóa..." : "Bắt đầu cài đặt"}
           </button>
-        </div>
+        </form>
       )}
     </Modal>
   );

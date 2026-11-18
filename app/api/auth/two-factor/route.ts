@@ -40,11 +40,19 @@ export async function GET() {
   }
 }
 
-/** Bước 1: sinh khóa. Chưa bật gì. */
-export async function POST() {
+/** Bước 1: nhập lại mật khẩu rồi sinh khóa. Chưa bật gì. */
+export async function POST(request: Request) {
   try {
     const user = await requireApiUser();
-    return Response.json(await beginTwoFactorSetup(user.id), { status: 201 });
+    const body = (await request.json().catch(() => ({}))) as { password?: string };
+
+    // Mật khẩu sai cũng bị đếm, để phiên bị đánh cắp không dò được ở đây.
+    const guard = await guardCode(user.id, request);
+    if (guard.blocked) return guard.blocked;
+
+    const result = await beginTwoFactorSetup(user.id, String(body.password ?? ""));
+    await discardAttempt(guard.attemptId);
+    return Response.json(result, { status: 201 });
   } catch (error) {
     return toErrorResponse(error);
   }
