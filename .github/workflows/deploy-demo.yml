@@ -8,8 +8,19 @@
 #   CLOUDFLARE_ACCOUNT_ID  mã tài khoản, xem ở góc phải bảng điều khiển
 #
 # Và một biến (Variables, không phải Secrets):
-#   CF_D1_DATABASE_ID      mã D1 do `wrangler d1 create` in ra
+#   CF_D1_DEMO_DATABASE_ID  mã D1 CỦA BẢN DEMO, do `wrangler d1 create
+#                           room-manager-demo` in ra
+#
+# Ba lớp chặn để bản demo không đụng tới bản thật trên cùng tài khoản:
+#   1. Worker tên `room-manager-demo`, không ghi đè Worker `room-manager`.
+#   2. Tên D1 phải kết thúc bằng `-demo`, và mã D1 lấy từ một biến riêng chứ
+#      không dùng chung `CF_D1_DATABASE_ID` của bản thật.
+#   3. Trước khi nạp dữ liệu mẫu (bước này XÓA SẠCH mọi bảng), kiểm tra cơ sở
+#      dữ liệu không có tài khoản nào ngoài tài khoản mẫu.
 name: Deploy bản demo
+
+permissions:
+  contents: read
 
 on:
   workflow_dispatch:
@@ -31,8 +42,28 @@ jobs:
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      # Đưa giá trị người bấm nhập vào qua biến môi trường, không chèn thẳng
+      # vào lệnh shell.
+      TEN_D1: ${{ inputs.ten_d1 }}
+      CF_WORKER_NAME: room-manager-demo
 
     steps:
+      - name: Chặn nhầm sang cơ sở dữ liệu thật
+        env:
+          MA_D1_DEMO: ${{ vars.CF_D1_DEMO_DATABASE_ID }}
+          MA_D1_THAT: ${{ vars.CF_D1_DATABASE_ID }}
+        run: |
+          case "$TEN_D1" in
+            *-demo) ;;
+            *) echo "::error::Tên D1 của bản demo phải kết thúc bằng -demo (đang là: $TEN_D1)."; exit 1 ;;
+          esac
+          if [ -z "$MA_D1_DEMO" ]; then
+            echo "::error::Chưa đặt biến CF_D1_DEMO_DATABASE_ID (mã D1 của bản demo)."; exit 1
+          fi
+          if [ -n "$MA_D1_THAT" ] && [ "$MA_D1_DEMO" = "$MA_D1_THAT" ]; then
+            echo "::error::CF_D1_DEMO_DATABASE_ID đang trùng với mã D1 của bản thật."; exit 1
+          fi
+
       - uses: actions/checkout@v4
 
       - uses: actions/setup-node@v4
@@ -45,7 +76,7 @@ jobs:
       - name: Build với thông tin D1 thật
         env:
           CF_D1_DATABASE_NAME: ${{ inputs.ten_d1 }}
-          CF_D1_DATABASE_ID: ${{ vars.CF_D1_DATABASE_ID }}
+          CF_D1_DATABASE_ID: ${{ vars.CF_D1_DEMO_DATABASE_ID }}
         run: npm run build
 
       - name: Dựng bảng trên D1
@@ -56,8 +87,23 @@ jobs:
         # công khai trong mã nguồn, nên bước này chỉ dành cho bản demo.
         if: ${{ inputs.nap_du_lieu_mau }}
         run: |
+          # File SQL mẫu mở đầu bằng DELETE FROM mọi bảng. Chỉ chạy khi cơ sở
+          # dữ liệu chưa có tài khoản nào ngoài tài khoản mẫu; không đọc được
+          # kết quả thì cũng dừng, thà không nạp còn hơn xóa nhầm.
+          npx wrangler d1 execute "$TEN_D1" --remote --json \
+            --config dist/server/wrangler.json \
+            --command "SELECT count(*) AS n FROM users WHERE email <> 'quanly@hoangan.vn'" \
+            > kiem-tra-tai-khoan.json
+          node -e '
+            const kq = JSON.parse(require("fs").readFileSync("kiem-tra-tai-khoan.json", "utf8"));
+            const n = (Array.isArray(kq) ? kq[0] : kq)?.results?.[0]?.n;
+            if (n !== 0) {
+              console.error(`::error::Cơ sở dữ liệu có ${n ?? "?"} tài khoản không phải tài khoản mẫu. Dừng, không xóa.`);
+              process.exit(1);
+            }
+          '
           node scripts/tao-sql-demo.mjs demo-du-lieu-mau.sql
-          npx wrangler d1 execute "${{ inputs.ten_d1 }}" --remote \
+          npx wrangler d1 execute "$TEN_D1" --remote \
             --config dist/server/wrangler.json --file=demo-du-lieu-mau.sql
 
       - name: Deploy
@@ -75,7 +121,9 @@ jobs:
         # Cổng chặn cuối: route dựng dữ liệu phải khóa, trang công khai không
         # được lộ thông tin khách thuê, và mọi CSS/JS phải tải được.
         if: steps.dia_chi.outputs.url != ''
-        run: npm run kiem-tra-deploy -- "${{ steps.dia_chi.outputs.url }}"
+        env:
+          DIA_CHI: ${{ steps.dia_chi.outputs.url }}
+        run: npm run kiem-tra-deploy -- "$DIA_CHI"
 
       - name: Tóm tắt
         run: |

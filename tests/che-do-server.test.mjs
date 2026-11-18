@@ -111,3 +111,49 @@ test("nhóm route dựng dữ liệu bị khóa ở chế độ server", async (
   const res = await fetch(`${goc_url}/api/dev/status`);
   assert.equal(res.status, 403);
 });
+
+test("khởi tạo lần hai không xóa dữ liệu đã có, trừ khi yêu cầu rõ và có sao lưu", async () => {
+  const { spawnSync } = await import("node:child_process");
+  const { readdir } = await import("node:fs/promises");
+  const duLieu = await mkdtemp(path.join(tmpdir(), "roommanager-init-"));
+  const chay = (email, them = []) =>
+    spawnSync(
+      process.execPath,
+      [
+        path.join(goc, "scripts", "chay-server.mjs"),
+        "--khoi-tao",
+        "--du-lieu", duLieu,
+        "--email", email,
+        "--ho-ten", "Chủ Nhà Thử",
+        "--mat-khau", "matkhauthu2026",
+        "--toi-dong-y-xoa-sach",
+        ...them,
+      ],
+      { cwd: goc, encoding: "utf8" },
+    );
+  const banSao = async () =>
+    (await readdir(path.dirname(duLieu))).filter((ten) =>
+      ten.startsWith(`${path.basename(duLieu)}-sao-luu-`),
+    );
+
+  try {
+    const lan1 = chay("chu-dau@example.com");
+    assert.equal(lan1.status, 0, lan1.stdout + lan1.stderr);
+
+    // Lần hai: phải từ chối, kể cả khi có cờ xác nhận cũ.
+    const lan2 = chay("ke-de@example.com");
+    assert.equal(lan2.status, 1, "khởi tạo lần hai phải dừng lại");
+    assert.match(lan2.stdout, /đã có 1 tài khoản/);
+    assert.deepEqual(await banSao(), [], "chưa xóa gì thì chưa cần sao lưu");
+
+    // Yêu cầu rõ ràng: được làm, nhưng dữ liệu cũ phải nằm lại trong bản sao lưu.
+    const lan3 = chay("chu-moi@example.com", ["--xoa-du-lieu-cu"]);
+    assert.equal(lan3.status, 0, lan3.stdout + lan3.stderr);
+    assert.equal((await banSao()).length, 1, "phải có đúng một bản sao lưu");
+  } finally {
+    for (const ten of await banSao()) {
+      await rm(path.join(path.dirname(duLieu), ten), { recursive: true, force: true });
+    }
+    await rm(duLieu, { recursive: true, force: true });
+  }
+});

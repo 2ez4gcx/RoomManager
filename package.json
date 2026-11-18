@@ -2,6 +2,7 @@
   "name": "room-manager",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "engines": {
     "node": ">=22.13.0"
   },
@@ -28,8 +29,8 @@
     "drizzle-orm": "0.45.2",
     "lucide-react": "^1.31.0",
     "qrcode-generator": "^2.0.4",
-    "react": "19.2.6",
-    "react-dom": "19.2.6"
+    "react": "19.2.9",
+    "react-dom": "19.2.9"
   },
   "devDependencies": {
     "@cloudflare/vite-plugin": "^1.52.1",
@@ -50,7 +51,7 @@
     "globals": "16.4.0",
     "jsqr": "^1.4.0",
     "miniflare": "^4.20260730.0",
-    "react-server-dom-webpack": "19.2.6",
+    "react-server-dom-webpack": "19.2.9",
     "tailwindcss": "4.2.1",
     "typescript": "5.9.3",
     "typescript-eslint": "8.59.3",

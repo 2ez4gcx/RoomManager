@@ -13,12 +13,16 @@
  * vỡ toàn bộ bộ kiểm thử. Gọi thẳng Miniflare tránh được cả hai.
  *
  *   node scripts/chay-server.mjs                 chạy server
- *   node scripts/chay-server.mjs --khoi-tao      xóa sạch và tạo chủ nhà đầu tiên
+ *   node scripts/chay-server.mjs --khoi-tao      tạo cơ sở dữ liệu trống và chủ nhà đầu tiên
+ *   node scripts/chay-server.mjs --khoi-tao --xoa-du-lieu-cu
+ *                                                như trên, kể cả khi đã có dữ liệu
+ *                                                (sao lưu trước rồi mới xóa)
  *   node scripts/chay-server.mjs --cong 8080     đổi cổng
  *   node scripts/chay-server.mjs --du-lieu <thư mục>   đổi nơi chứa dữ liệu
  */
 import { createServer } from "node:http";
-import { readdir, mkdir, readFile, stat } from "node:fs/promises";
+import { createHash } from "node:crypto";
+import { cp, readdir, mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import { createInterface } from "node:readline/promises";
 import { networkInterfaces } from "node:os";
 import path from "node:path";
@@ -153,9 +157,87 @@ async function dựngWorker({ moCong }) {
   return mf;
 }
 
-/* ---------------------------------------------------------------- */
-
-if (khoiTao) {
+/**
+ * Số tài khoản đang có trong cơ sở dữ liệu của chế độ server. Trả 0 khi chưa
+ * có bảng nào — tức là chưa từng khởi tạo.
+ */
+async function demTaiKhoan() {
+  const mf = await dựngWorker({ moCong: false });
+  try {
+    const db = await mf.getD1Database("DB");
+    const dong = await db.prepare("SELECT count(*) AS n FROM users").first();
+    return Number(dong?.n ?? 0);
+  } catch {
+    return 0;
+  } finally {
+    await mf.dispose();
+  }
+}
+
+/**
+ * Chép nguyên thư mục dữ liệu sang một thư mục bên cạnh, trả về đường dẫn.
+ *
+ * Gọi khi KHÔNG có Miniflare nào đang mở thư mục đó, để bản chép là một ảnh
+ * chụp nhất quán của file SQLite.
+ */
+async function saoLuu(lyDo) {
+  const dau = new Date().toLocaleString("sv-SE").replace(/[: ]/g, "-");
+  const dich = `${thuMucDuLieu}-sao-luu-${dau}-${lyDo}`;
+  await cp(thuMucDuLieu, dich, { recursive: true });
+  return dich;
+}
+
+const tepDauMigration = path.join(thuMucDuLieu, "migration-da-ap.txt");
+
+/** Dấu vân tay của bộ migration trong mã nguồn hiện tại. */
+async function dauVanTayMigration() {
+  const thuMuc = path.join(goc, "drizzle");
+  const bam = createHash("sha256");
+  for (const ten of (await readdir(thuMuc)).filter((t) => t.endsWith(".sql")).sort()) {
+    bam.update(ten);
+    bam.update(await readFile(path.join(thuMuc, ten)));
+  }
+  return bam.digest("hex");
+}
+
+/**
+ * Áp migration mới lên dữ liệu đang có, trước khi mở cổng.
+ *
+ * Không có bước này thì cập nhật mã nguồn có đổi cấu trúc bảng sẽ chạy trên cơ
+ * sở dữ liệu cũ và báo lỗi SQL ngay trên số liệu thật: nhóm route `/api/dev/`
+ * — nơi duy nhất gọi migration — bị khóa ở chế độ server.
+ *
+ * Chỉ chạy khi bộ migration khác lần trước (so dấu vân tay ghi trong thư mục
+ * dữ liệu), và sao lưu trước nếu đã có dữ liệu. Migration chạy trong một
+ * Miniflare không mở cổng, cùng cách với `--khoi-tao`.
+ */
+async function apMigrationNeuCan() {
+  const hienTai = await dauVanTayMigration();
+  const daAp = await readFile(tepDauMigration, "utf8").catch(() => "");
+  if (daAp.trim() === hienTai) return;
+
+  if ((await demTaiKhoan()) > 0) {
+    const banSao = await saoLuu("truoc-cap-nhat");
+    console.log("");
+    console.log("  Mã nguồn có thay đổi cấu trúc dữ liệu. Đã sao lưu trước khi cập nhật:");
+    console.log(`    ${banSao}`);
+  }
+
+  const mf = await dựngWorker({ moCong: false });
+  try {
+    const kq = await mf.dispatchFetch("http://server/api/dev/setup?migrate=true", {
+      method: "POST",
+    });
+    if (!kq.ok) throw new Error(`Cập nhật cấu trúc dữ liệu thất bại: ${await kq.text()}`);
+  } finally {
+    await mf.dispose();
+  }
+  await writeFile(tepDauMigration, hienTai);
+}
+
+/* ---------------------------------------------------------------- */
+
+if (khoiTao) {
   const sanCo = {
     email: thamSoChuoi("email"),
     hoTen: thamSoChuoi("ho-ten"),
@@ -165,13 +247,36 @@ if (khoiTao) {
   };
   const đủThamSố = sanCo.email && sanCo.hoTen && sanCo.matKhau && sanCo.boQuaXacNhan;
 
+  // Đã có tài khoản tức là đã có dữ liệu thật. Chạy nhầm file khởi tạo lần hai
+  // không được phép xóa nó chỉ bằng một câu xác nhận gõ quen tay.
+  const soTaiKhoan = await demTaiKhoan();
+  if (soTaiKhoan > 0 && !thamSo.includes("--xoa-du-lieu-cu")) {
+    console.log("");
+    console.log(`  [DỪNG] Cơ sở dữ liệu này đã có ${soTaiKhoan} tài khoản — tức là đã có dữ liệu.`);
+    console.log("  Khởi tạo sẽ XÓA SẠCH toàn bộ, nên không tự làm.");
+    console.log("");
+    console.log(`  Thư mục dữ liệu: ${thuMucDuLieu}`);
+    console.log("");
+    console.log("  Chỉ cần chạy server:  chay-server.bat");
+    console.log("  Nếu thật sự muốn xóa hết và làm lại từ đầu:");
+    console.log("    node scripts/chay-server.mjs --khoi-tao --xoa-du-lieu-cu");
+    console.log("  (lệnh đó sao lưu dữ liệu cũ sang thư mục bên cạnh rồi mới xóa)");
+    console.log("");
+    process.exit(1);
+  }
+
   const hỏi = đủThamSố
     ? null
     : createInterface({ input: process.stdin, output: process.stdout });
 
   console.log("");
-  console.log("  Bước này XÓA SẠCH cơ sở dữ liệu của chế độ server rồi tạo tài khoản");
-  console.log("  chủ nhà đầu tiên. Dữ liệu đã nhập sẽ mất, không hoàn tác được.");
+  if (soTaiKhoan > 0) {
+    console.log("  Bước này XÓA SẠCH cơ sở dữ liệu của chế độ server rồi tạo tài khoản");
+    console.log("  chủ nhà đầu tiên. Dữ liệu cũ được sao lưu sang thư mục bên cạnh trước.");
+  } else {
+    console.log("  Bước này tạo cơ sở dữ liệu trống cho chế độ server và tài khoản chủ");
+    console.log("  nhà đầu tiên.");
+  }
   console.log("");
   console.log(`  Thư mục dữ liệu: ${thuMucDuLieu}`);
   console.log("");
@@ -192,6 +297,12 @@ if (khoiTao) {
     sanCo.dienThoai || (hỏi ? await hỏi.question("  Số điện thoại (bỏ trống cũng được): ") : "")
   ).trim();
   hỏi?.close();
+
+  if (soTaiKhoan > 0) {
+    const banSao = await saoLuu("truoc-khi-xoa");
+    console.log("");
+    console.log(`  Đã sao lưu dữ liệu cũ: ${banSao}`);
+  }
 
   const mf = await dựngWorker({ moCong: false });
   try {
@@ -215,6 +326,10 @@ if (khoiTao) {
     });
     if (thu.status !== 200) throw new Error("Tạo xong nhưng đăng nhập thử không được.");
 
+    // `setup?empty=true` đã áp đủ migration; ghi dấu để lần chạy server đầu
+    // tiên không sao lưu và áp lại vô ích.
+    await writeFile(tepDauMigration, await dauVanTayMigration());
+
     console.log("");
     console.log(`  Xong. Tài khoản chủ nhà: ${kq.user.email}`);
     console.log("  Đã thử đăng nhập bằng chính mật khẩu vừa đặt: được.");
@@ -228,6 +343,7 @@ if (khoiTao) {
     await mf.dispose();
   }
 } else {
+  await apMigrationNeuCan();
   const mf = await dựngWorker({ moCong: true });
 
   /**

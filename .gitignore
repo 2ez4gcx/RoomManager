@@ -49,3 +49,18 @@ yarn-error.log*
 # Goi ban giao do dong-goi.bat sinh ra
 RoomManager-*.zip
 demo-du-lieu-mau.sql
+
+# Ban sao luu va file xuat co so du lieu: chua so CCCD, so dien thoai cua khach
+# thue va bam mat khau. Khong bao gio duoc vao git. Migration trong drizzle/ la
+# ngoai le duy nhat.
+*.sql
+!/drizzle/*.sql
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal
+*.db
+backup-*/
+/kiem-tra-tai-khoan.json
+
+# Bien moi truong cuc bo cua wrangler
+.dev.vars*

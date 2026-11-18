@@ -19,7 +19,13 @@ const { d1, r2 } = hostingConfig;
 // macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
 const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
 
+// Tên Worker. Bản demo PHẢI đặt tên khác bản thật (workflow deploy-demo đặt
+// `room-manager-demo`): cùng tên thì deploy demo ghi đè luôn Worker đang chạy
+// thật và nối nó sang cơ sở dữ liệu demo.
+const workerName = process.env.CF_WORKER_NAME;
+
 const localBindingConfig = {
+  ...(workerName ? { name: workerName } : {}),
   main: "./worker/index.ts",
   // Ghim ngày tương thích thay vì để plugin tự lấy ngày build. Hai lý do: bản
   // build hôm nay và bản build tháng sau phải chạy giống hệt nhau, và ngày này
@@ -39,8 +45,10 @@ const localBindingConfig = {
           database_name: d1DatabaseName,
           database_id: d1DatabaseId,
           // Để `wrangler d1 migrations apply` tìm được SQL do drizzle sinh ra.
-          // Đường dẫn tính từ file cấu hình trong dist/server.
-          migrations_dir: "../../drizzle",
+          // Viết theo gốc dự án: plugin Cloudflare tự đổi sang đường dẫn tính
+          // từ dist/server/wrangler.json. Viết sẵn "../../drizzle" thì bị đổi
+          // thêm lần nữa và trỏ ra ngoài thư mục dự án.
+          migrations_dir: "drizzle",
         },
       ]
     : [],

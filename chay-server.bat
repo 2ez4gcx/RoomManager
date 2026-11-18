@@ -63,9 +63,7 @@ if not exist ".wrangler\state\server\" (
   echo   Chua co co so du lieu cho che do server
   echo  ==========================================
   echo.
-  echo  Chay lenh sau de tao, no se hoi email va mat khau chu nha:
-  echo.
-  echo    npm run server:khoi-tao
+  echo  Nhap dup khoi-tao-that.bat de tao, no se hoi email va mat khau chu nha.
   echo.
   echo  Xong roi thi chay lai file nay.
   echo.

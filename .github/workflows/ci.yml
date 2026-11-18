@@ -15,6 +15,9 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   kiem-tra:
     name: Typecheck, build, lint, test
@@ -68,10 +71,16 @@ jobs:
         # Đây là cây thật sự chạy trên Cloudflare. Có cảnh báo ở đây là chặn.
         run: npm audit --omit=dev --audit-level=low
 
-      - name: Cây dev/build - chỉ báo, không chặn
-        # Toolchain phát triển còn cảnh báo chưa gỡ được; xem lý do ở commit
-        # "Giảm cảnh báo dependency từ 21 xuống 14". Ghi ra để thấy khi nào con
-        # số đổi, nhưng không chặn merge vì chúng không chạm tới runtime.
+      - name: Cây dev/build - chặn mức nghiêm trọng
+        # Một số gói nằm ở devDependencies nhưng vẫn được đóng vào bản chạy
+        # thật (react-server-dom-webpack là runtime của React Server
+        # Components), nên bước --omit=dev ở trên không nhìn thấy chúng. Lỗi
+        # mức critical ở bất kỳ đâu trong cây đều chặn.
+        run: npm audit --audit-level=critical
+
+      - name: Cây dev/build - phần còn lại chỉ báo, không chặn
+        # Toolchain phát triển còn cảnh báo chưa gỡ được. Ghi ra để thấy khi
+        # nào con số đổi.
         run: npm audit || true
 
   cau-hinh:
