@@ -1,9 +1,10 @@
 import { cancelInvoice } from "../../../../db/invoice-cancel";
-import { requireApiUser, toErrorResponse } from "../../../lib/api";
+import { requireOwner, toErrorResponse } from "../../../lib/api";
 
 export async function POST(request: Request) {
   try {
-    const user = await requireApiUser();
+    // Hủy đơn là xóa một khoản phải thu khỏi công nợ: chỉ chủ nhà.
+    const user = await requireOwner();
     const body = (await request.json()) as { invoiceId?: string; reason?: string };
 
     return Response.json(

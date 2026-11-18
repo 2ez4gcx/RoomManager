@@ -45,8 +45,43 @@ function isPublic(pathname: string) {
   );
 }
 
+/**
+ * Yêu cầu ghi dữ liệu phải đến từ chính trang của ứng dụng.
+ *
+ * Cookie phiên là `SameSite=Lax`, đủ chặn trang lạ ở tên miền khác. Nhưng khi
+ * chạy trên tên miền riêng, một trang ở subdomain anh em (hoặc một dịch vụ
+ * khác trên cùng máy trong mạng nội bộ) được trình duyệt coi là "cùng site" và
+ * vẫn gửi kèm cookie. Trình duyệt luôn gửi header `Origin` cho yêu cầu ghi từ
+ * trang web, nên so nó với `Host` là chặn được. Không có `Origin` (lệnh curl,
+ * script) thì cho qua: những nguồn đó không mang cookie của người dùng.
+ */
+function isCrossOriginWrite(request: NextRequest) {
+  const method = request.method.toUpperCase();
+  if (method === "GET" || method === "HEAD" || method === "OPTIONS") return false;
+
+  const origin = request.headers.get("origin");
+  if (!origin) return false;
+
+  // Chấp nhận khi khớp `Host` do trình duyệt gửi, hoặc khớp host của chính URL
+  // đang được phục vụ (hai giá trị này lệch nhau khi đứng sau một lớp chuyển tiếp).
+  const ownHosts = new Set([request.headers.get("host"), request.nextUrl.host]);
+  try {
+    return !ownHosts.has(new URL(origin).host);
+  } catch {
+    return true;
+  }
+}
+
 export default function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  if (pathname.startsWith("/api/") && isCrossOriginWrite(request)) {
+    return NextResponse.json(
+      { error: "Yêu cầu đến từ một trang khác, không được chấp nhận." },
+      { status: 403 },
+    );
+  }
+
   if (isPublic(pathname)) return NextResponse.next();
   if (request.cookies.get(SESSION_COOKIE)) return NextResponse.next();
 

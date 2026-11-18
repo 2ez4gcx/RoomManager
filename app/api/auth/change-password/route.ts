@@ -1,6 +1,12 @@
 import { cookies } from "next/headers";
 import { changePassword, PasswordError, SESSION_COOKIE } from "../../../../db/auth";
 import { requireApiUser, toErrorResponse } from "../../../lib/api";
+import {
+  clientIp,
+  discardAttempt,
+  formatWait,
+  registerVerificationAttempt,
+} from "../../../../db/login-throttle";
 
 export async function POST(request: Request) {
   try {
@@ -25,6 +31,15 @@ export async function POST(request: Request) {
       );
     }
 
+    // Đếm lần thử: phiên bị đánh cắp không được dò mật khẩu hiện tại vô hạn.
+    const guard = await registerVerificationAttempt(user.id, clientIp(request));
+    if (guard.blocked) {
+      return Response.json(
+        { error: `Nhập sai quá nhiều lần. Thử lại sau ${formatWait(guard.retryAfterSeconds)}.` },
+        { status: 429, headers: { "Retry-After": String(guard.retryAfterSeconds) } },
+      );
+    }
+
     const store = await cookies();
     await changePassword({
       userId: user.id,
@@ -32,6 +47,7 @@ export async function POST(request: Request) {
       newPassword,
       keepToken: store.get(SESSION_COOKIE)?.value,
     });
+    await discardAttempt(guard.attemptId);
 
     return Response.json({ ok: true });
   } catch (error) {

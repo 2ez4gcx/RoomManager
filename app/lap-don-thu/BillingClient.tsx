@@ -326,7 +326,12 @@ export function BillingClient({
                       <input
                         type="number"
                         min={0}
-                        disabled={issued}
+                        disabled={issued || currentUser.role !== "owner"}
+                        title={
+                          currentUser.role !== "owner"
+                            ? "Chỉ chủ nhà được ghi đè tiền phòng"
+                            : undefined
+                        }
                         value={draft.rent}
                         placeholder={String(entry.row.rent)}
                         onChange={(event) =>

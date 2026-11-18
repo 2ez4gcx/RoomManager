@@ -8,7 +8,8 @@
 import { and, eq, sql } from "drizzle-orm";
 import { getDb } from "./index";
 import { newId } from "./ids";
-import { ISO_DATE, nextCode, ValidationError, writeAudit } from "./internal";
+import type { BatchItem } from "drizzle-orm/batch";
+import { isRealDate, nextCode, ValidationError, withCodeRetry, writeAudit } from "./internal";
 
 import {
   bookingRequests,
@@ -35,6 +36,8 @@ export type CreateRoomInput = {
   price?: number | null;
   area?: number | null;
   note?: string;
+  /** Người thao tác, ghi vào nhật ký. */
+  actorId?: string | null;
 };
 
 export async function createRoom(input: CreateRoomInput) {
@@ -92,6 +95,7 @@ export async function createRoom(input: CreateRoomInput) {
     .returning();
 
   await writeAudit(db, {
+    actorId: input.actorId ?? null,
     action: "room.create",
     entityType: "room",
     entityId: id,
@@ -116,6 +120,8 @@ export type CreateTenantInput = {
   rent?: number | null;
   deposit?: number | null;
   billingDay?: number;
+  /** Người thao tác, ghi vào nhật ký và sổ quỹ. */
+  actorId?: string | null;
 };
 
 /**
@@ -133,8 +139,13 @@ export async function createTenant(input: CreateTenantInput) {
   if (!/^0\d{8,10}$/.test(phone)) {
     throw new ValidationError("Số điện thoại không hợp lệ.", "phone");
   }
-  if (!ISO_DATE.test(input.startDate)) {
+  if (!isRealDate(input.startDate)) {
     throw new ValidationError("Ngày bắt đầu không hợp lệ.", "startDate");
+  }
+
+  const months = input.months ?? 12;
+  if (!Number.isInteger(months) || months < 1 || months > 120) {
+    throw new ValidationError("Thời hạn hợp đồng phải từ 1 đến 120 tháng.", "months");
   }
 
   const [room] = await db
@@ -169,7 +180,10 @@ export async function createTenant(input: CreateTenantInput) {
     throw new ValidationError("Giá thuê phải là số nguyên VNĐ lớn hơn 0.", "rent");
   }
 
-  const deposit = input.deposit ?? rent;
+  // Bỏ trống ô tiền cọc nghĩa là không thu cọc. Trước đây mặc định bằng tiền
+  // thuê: xóa trắng ô đó là sổ quỹ ghi một khoản thu chưa từng có, rồi lúc trả
+  // phòng lại "hoàn" khoản đó.
+  const deposit = input.deposit ?? 0;
   if (!Number.isInteger(deposit) || deposit < 0) {
     throw new ValidationError("Tiền cọc phải là số nguyên VNĐ.", "deposit");
   }
@@ -179,78 +193,220 @@ export async function createTenant(input: CreateTenantInput) {
     throw new ValidationError("Ngày thu phải nằm trong khoảng 1–28.", "billingDay");
   }
 
-  const months = input.months ?? 12;
   const end = new Date(`${input.startDate}T00:00:00Z`);
   end.setUTCMonth(end.getUTCMonth() + months);
 
   const guestId = newId("gst");
   const contractId = newId("ctr");
+  const actorId = input.actorId ?? null;
 
-  await db.insert(guests).values({
-    id: guestId,
-    code: await nextCode(db, guests, guests.code, "KH"),
-    fullName,
-    phone,
-    idNumber: input.idNumber?.trim() || null,
-    dateOfBirth: input.dateOfBirth?.trim() || null,
+  // Ghi cả hồ sơ, hợp đồng và khoản cọc trong MỘT lô. Ghi từng bước thì hỏng
+  // giữa chừng để lại khách không có hợp đồng, hoặc hợp đồng không có dòng cọc
+  // trong sổ quỹ. Trùng mã thì cả lô được làm lại với mã mới.
+  await withCodeRetry(async () => {
+    const statements: [BatchItem<"sqlite">, ...BatchItem<"sqlite">[]] = [
+      db.insert(guests).values({
+        id: guestId,
+        code: await nextCode(db, guests, guests.code, "KH"),
+        fullName,
+        phone,
+        idNumber: input.idNumber?.trim() || null,
+        dateOfBirth: input.dateOfBirth?.trim() || null,
+      }),
+      db.insert(contracts).values({
+        id: contractId,
+        code: await nextCode(db, contracts, contracts.code, "HD"),
+        roomId: room.id,
+        primaryGuestId: guestId,
+        startDate: input.startDate,
+        endDate: end.toISOString().slice(0, 10),
+        rent,
+        deposit,
+        billingDay,
+        status: "active",
+        createdBy: actorId,
+      }),
+      db.insert(contractGuests).values({
+        id: newId("cgu"),
+        contractId,
+        guestId,
+        relationship: "Người đứng tên",
+      }),
+      // Giữ chỗ đã hoàn thành nhiệm vụ khi hợp đồng được ký. Không xóa ở đây
+      // thì phòng sẽ hiện lại "Đã giữ" sau lúc hợp đồng kết thúc.
+      db
+        .update(bookingRequests)
+        .set({ holdUntil: null, updatedAt: sql`(unixepoch() * 1000)` })
+        .where(
+          and(eq(bookingRequests.roomId, room.id), eq(bookingRequests.status, "confirmed")),
+        ),
+    ];
+
+    // Ghi cọc vào sổ quỹ ngay khi thu. Không ghi thì lúc trả phòng khoản hoàn
+    // cọc sẽ hiện thành lỗ, vì tiền vào chưa bao giờ được ghi nhận.
+    if (deposit > 0) {
+      statements.push(
+        db.insert(ledgerEntries).values({
+          id: newId("led"),
+          code: await nextCode(db, ledgerEntries, ledgerEntries.code, "GD", 4),
+          propertyId: room.propertyId,
+          direction: "in",
+          category: "Tiền cọc",
+          description: `Cọc phòng ${room.code} · ${fullName}`,
+          amount: deposit,
+          occurredAt: input.startDate,
+          recordedBy: actorId,
+        }),
+      );
+    }
+
+    await db.batch(statements);
   });
-
-  await db.insert(contracts).values({
-    id: contractId,
-    code: await nextCode(db, contracts, contracts.code, "HD"),
-    roomId: room.id,
-    primaryGuestId: guestId,
-    startDate: input.startDate,
-    endDate: end.toISOString().slice(0, 10),
-    rent,
-    deposit,
-    billingDay,
-    status: "active",
-  });
-
-  await db.insert(contractGuests).values({
-    id: newId("cgu"),
-    contractId,
-    guestId,
-    relationship: "Người đứng tên",
-  });
-
-  // Giữ chỗ đã hoàn thành nhiệm vụ khi hợp đồng được ký. Không xóa ở đây thì
-  // phòng sẽ hiện lại "Đã giữ" sau lúc hợp đồng kết thúc.
-  await db
-    .update(bookingRequests)
-    .set({ holdUntil: null, updatedAt: sql`(unixepoch() * 1000)` })
-    .where(
-      and(
-        eq(bookingRequests.roomId, room.id),
-        eq(bookingRequests.status, "confirmed"),
-      ),
-    );
-
-  // Ghi cọc vào sổ quỹ ngay khi thu. Không ghi thì lúc trả phòng khoản hoàn
-  // cọc sẽ hiện thành lỗ, vì tiền vào chưa bao giờ được ghi nhận.
-  if (deposit > 0) {
-    await db.insert(ledgerEntries).values({
-      id: newId("led"),
-      code: await nextCode(db, ledgerEntries, ledgerEntries.code, "GD", 4),
-      propertyId: room.propertyId,
-      direction: "in",
-      category: "Tiền cọc",
-      description: `Cọc phòng ${room.code} · ${fullName}`,
-      amount: deposit,
-      occurredAt: input.startDate,
-      recordedBy: null,
-    });
-  }
 
   await writeAudit(db, {
+    actorId,
     action: "contract.create",
     entityType: "contract",
     entityId: contractId,
-    changes: { room: room.code, guest: fullName, rent, startDate: input.startDate },
+    changes: { room: room.code, guest: fullName, rent, deposit, startDate: input.startDate },
   });
 
   return { guestId, contractId };
+}
+
+export type UpdateTenantInput = {
+  guestId: string;
+  fullName?: string | null;
+  phone?: string | null;
+  /** Các trường dưới đây sửa hợp đồng ĐANG hiệu lực của khách. */
+  rent?: number | null;
+  billingDay?: number | null;
+  /** `""` để bỏ ngày kết thúc (hợp đồng không thời hạn). */
+  endDate?: string | null;
+  actorId: string;
+};
+
+/**
+ * Sửa hồ sơ khách và hợp đồng đang hiệu lực.
+ *
+ * Trước đây nhập sai giá thuê, số điện thoại hay ngày thu là không sửa được,
+ * và hợp đồng hết hạn cũng không gia hạn được. Chỉ sửa những gì áp dụng cho
+ * tương lai: đơn đã lập giữ nguyên số tiền lúc lập, tiền cọc đã thu không đổi
+ * ở đây vì nó gắn với một dòng sổ quỹ.
+ */
+export async function updateTenant(input: UpdateTenantInput) {
+  const db = getDb();
+
+  const [guest] = await db
+    .select({ id: guests.id, fullName: guests.fullName, phone: guests.phone })
+    .from(guests)
+    .where(eq(guests.id, input.guestId))
+    .limit(1);
+  if (!guest) throw new ValidationError("Không tìm thấy khách thuê.", "guestId");
+
+  const changes: Record<string, unknown> = {};
+  const guestPatch: Partial<typeof guests.$inferInsert> = {};
+
+  if (input.fullName != null) {
+    const fullName = input.fullName.trim();
+    if (!fullName) throw new ValidationError("Cần nhập họ tên khách thuê.", "fullName");
+    if (fullName.length > 120) throw new ValidationError("Họ tên quá dài.", "fullName");
+    if (fullName !== guest.fullName) {
+      guestPatch.fullName = fullName;
+      changes.fullName = { from: guest.fullName, to: fullName };
+    }
+  }
+  if (input.phone != null) {
+    const phone = input.phone.replace(/\s+/g, "");
+    if (!/^0\d{8,10}$/.test(phone)) {
+      throw new ValidationError("Số điện thoại không hợp lệ.", "phone");
+    }
+    if (phone !== guest.phone) {
+      guestPatch.phone = phone;
+      changes.phone = { from: guest.phone, to: phone };
+    }
+  }
+
+  const touchesContract =
+    input.rent != null || input.billingDay != null || input.endDate != null;
+  const contractPatch: Partial<typeof contracts.$inferInsert> = {};
+  let contractId: string | null = null;
+
+  if (touchesContract) {
+    const [contract] = await db
+      .select({
+        id: contracts.id,
+        rent: contracts.rent,
+        billingDay: contracts.billingDay,
+        startDate: contracts.startDate,
+        endDate: contracts.endDate,
+      })
+      .from(contracts)
+      .where(and(eq(contracts.primaryGuestId, guest.id), eq(contracts.status, "active")))
+      .limit(1);
+    if (!contract) {
+      throw new ValidationError("Khách này không còn hợp đồng hiệu lực để sửa.", "guestId");
+    }
+    contractId = contract.id;
+
+    if (input.rent != null && input.rent !== contract.rent) {
+      if (!Number.isInteger(input.rent) || input.rent <= 0) {
+        throw new ValidationError("Giá thuê phải là số nguyên VNĐ lớn hơn 0.", "rent");
+      }
+      contractPatch.rent = input.rent;
+      changes.rent = { from: contract.rent, to: input.rent };
+    }
+    if (input.billingDay != null && input.billingDay !== contract.billingDay) {
+      if (!Number.isInteger(input.billingDay) || input.billingDay < 1 || input.billingDay > 28) {
+        throw new ValidationError("Ngày thu phải nằm trong khoảng 1–28.", "billingDay");
+      }
+      contractPatch.billingDay = input.billingDay;
+      changes.billingDay = { from: contract.billingDay, to: input.billingDay };
+    }
+    if (input.endDate != null) {
+      const endDate = input.endDate === "" ? null : input.endDate;
+      if (endDate !== null) {
+        if (!isRealDate(endDate)) {
+          throw new ValidationError("Ngày kết thúc không hợp lệ.", "endDate");
+        }
+        if (endDate < contract.startDate) {
+          throw new ValidationError(
+            "Ngày kết thúc không được trước ngày bắt đầu hợp đồng.",
+            "endDate",
+          );
+        }
+      }
+      if (endDate !== contract.endDate) {
+        contractPatch.endDate = endDate;
+        changes.endDate = { from: contract.endDate, to: endDate };
+      }
+    }
+  }
+
+  if (Object.keys(guestPatch).length > 0) {
+    await db
+      .update(guests)
+      .set({ ...guestPatch, updatedAt: sql`(unixepoch() * 1000)` })
+      .where(eq(guests.id, guest.id));
+  }
+  if (contractId && Object.keys(contractPatch).length > 0) {
+    await db
+      .update(contracts)
+      .set({ ...contractPatch, updatedAt: sql`(unixepoch() * 1000)` })
+      .where(and(eq(contracts.id, contractId), eq(contracts.status, "active")));
+  }
+
+  if (Object.keys(changes).length > 0) {
+    await writeAudit(db, {
+      actorId: input.actorId,
+      action: "tenant.update",
+      entityType: "guest",
+      entityId: guest.id,
+      changes,
+    });
+  }
+
+  return { ok: true, changed: Object.keys(changes) };
 }
 
 /** Đổi tình trạng vật lý của phòng (dùng cho nút bảo trì). */

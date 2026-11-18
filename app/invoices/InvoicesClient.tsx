@@ -175,6 +175,7 @@ export function InvoicesClient({
 
       <InvoiceModal
         invoice={selected}
+        canCancel={currentUser.role === "owner"}
         onClose={() => setSelected(null)}
         onPaid={() => {
           setSelected(null);
@@ -186,9 +187,11 @@ export function InvoicesClient({
 }
 
 function InvoiceModal({
-  invoice, onClose, onPaid,
+  invoice, canCancel, onClose, onPaid,
 }: {
   invoice: InvoiceView | null;
+  /** Hủy đơn là xóa một khoản phải thu: chỉ chủ nhà. Máy chủ cũng chặn. */
+  canCancel: boolean;
   onClose: () => void;
   onPaid: () => void;
 }) {
@@ -356,7 +359,7 @@ function InvoiceModal({
                   <p className="modal-hint">Đơn này đã hủy, không còn tính vào doanh thu hay công nợ.</p>
                 ) : (
                   <>
-                    {invoice.paidAmount === 0 && (
+                    {canCancel && invoice.paidAmount === 0 && (
                       <button className="secondary-button" type="button" onClick={() => setCancelling(true)}>
                         <Ban size={15} /> Hủy đơn
                       </button>

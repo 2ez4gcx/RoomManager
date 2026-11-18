@@ -152,6 +152,24 @@ export async function withCodeRetry<T>(run: () => Promise<T>, attempts = 5): Pro
  */
 const MAX_BOUND_PARAMS = 90;
 
+/** Chia dòng thành các lô vừa giới hạn tham số của D1, cho một bảng. */
+export function chunkRows<TRow>(table: SQLiteTable, rows: TRow[]): TRow[][] {
+  const columns = Object.keys(getTableColumns(table)).length || 1;
+  const perChunk = Math.max(1, Math.floor(MAX_BOUND_PARAMS / columns));
+  const chunks: TRow[][] = [];
+  for (let index = 0; index < rows.length; index += perChunk) {
+    chunks.push(rows.slice(index, index + perChunk));
+  }
+  return chunks;
+}
+
+/** Ngày `YYYY-MM-DD` có thật trên lịch không (loại `2026-13-45`, `2026-02-30`). */
+export function isRealDate(value: string) {
+  if (!ISO_DATE.test(value)) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
 export async function insertChunked<TRow extends Record<string, unknown>>(
   table: SQLiteTable,
   rows: TRow[],

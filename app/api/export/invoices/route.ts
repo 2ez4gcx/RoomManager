@@ -1,4 +1,5 @@
 import { requireApiUser, toErrorResponse } from "../../../lib/api";
+import { todayInVietnam } from "../../../../db/internal";
 import { listInvoices } from "../../../../db/queries-extra";
 import { createXlsx, exportFileName, xlsxResponse } from "../../../../db/xlsx";
 
@@ -7,8 +8,7 @@ export async function GET(request: Request) {
     await requireApiUser();
 
     const period =
-      new URL(request.url).searchParams.get("period") ??
-      new Date().toISOString().slice(0, 7);
+      new URL(request.url).searchParams.get("period") ?? todayInVietnam().slice(0, 7);
     const invoices = await listInvoices(period);
 
     /** Tổng tiền theo từng loại dòng, để cột nào ra cột nấy. */
@@ -37,22 +37,51 @@ export async function GET(request: Request) {
           { header: "Còn nợ", width: 14, money: true },
           { header: "Trạng thái", width: 20 },
         ],
-        rows: invoices.map((invoice) => [
-          invoice.code,
-          invoice.roomCode,
-          invoice.propertyName,
-          invoice.tenantName,
-          invoice.period,
-          invoice.dueDate,
-          amountOf(invoice, "rent"),
-          amountOf(invoice, "electricity"),
-          amountOf(invoice, "water"),
-          amountOf(invoice, "service"),
-          invoice.total,
-          invoice.paidAmount,
-          invoice.outstanding,
-          invoice.statusLabel,
-        ]),
+        rows: [
+          ...invoices.map((invoice) => {
+            // Đơn đã hủy vẫn liệt kê để truy vết, nhưng không mang số tiền:
+            // hủy rồi lập lại mà cả hai dòng đều đủ tiền thì cộng cột "Tổng
+            // đơn" ra gấp đôi số phải thu thật.
+            const live = invoice.status !== "cancelled";
+            return [
+              invoice.code,
+              invoice.roomCode,
+              invoice.propertyName,
+              invoice.tenantName,
+              invoice.period,
+              invoice.dueDate,
+              live ? amountOf(invoice, "rent") : 0,
+              live ? amountOf(invoice, "electricity") : 0,
+              live ? amountOf(invoice, "water") : 0,
+              live ? amountOf(invoice, "service") : 0,
+              live ? invoice.total : 0,
+              live ? invoice.paidAmount : 0,
+              live ? invoice.outstanding : 0,
+              invoice.statusLabel,
+            ];
+          }),
+          (() => {
+            const live = invoices.filter((invoice) => invoice.status !== "cancelled");
+            const sum = (pick: (invoice: (typeof invoices)[number]) => number) =>
+              live.reduce((total, invoice) => total + pick(invoice), 0);
+            return [
+              "TỔNG",
+              "",
+              "",
+              `${live.length} đơn`,
+              period,
+              "",
+              sum((invoice) => amountOf(invoice, "rent")),
+              sum((invoice) => amountOf(invoice, "electricity")),
+              sum((invoice) => amountOf(invoice, "water")),
+              sum((invoice) => amountOf(invoice, "service")),
+              sum((invoice) => invoice.total),
+              sum((invoice) => invoice.paidAmount),
+              sum((invoice) => invoice.outstanding),
+              "",
+            ];
+          })(),
+        ],
       },
     ]);
 

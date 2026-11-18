@@ -152,6 +152,8 @@ export type TenantView = {
   startDate: string | null;
   endDate: string | null;
   rent: number;
+  billingDay: number | null;
+  /** Tổng còn nợ trên MỌI hợp đồng của khách, kể cả hợp đồng đã kết thúc. */
   debt: number;
   status: "Đang thuê" | "Sắp hết hạn" | "Chậm thanh toán" | "Đã trả phòng";
 };
@@ -160,7 +162,24 @@ const EXPIRING_SOON_DAYS = 30;
 
 export async function listTenants(): Promise<TenantView[]> {
   const db = getDb();
-  const outstanding = await outstandingByContract(db);
+  const [outstanding, allContracts] = await Promise.all([
+    outstandingByContract(db),
+    db.select({ id: contracts.id, guestId: contracts.primaryGuestId }).from(contracts),
+  ]);
+
+  // Cộng nợ theo KHÁCH, không theo hợp đồng đang hiệu lực. Khách trả phòng mà
+  // còn nợ thì hợp đồng đã kết thúc: chỉ nhìn hợp đồng hiệu lực là khoản nợ đó
+  // biến mất khỏi trang này trong khi trang Đơn thu vẫn đếm.
+  const todayIso = todayInVietnam();
+  const debtByGuest = new Map<string, { debt: number; overdue: boolean }>();
+  for (const contract of allContracts) {
+    const owed = outstanding.get(contract.id);
+    if (!owed) continue;
+    const entry = debtByGuest.get(contract.guestId) ?? { debt: 0, overdue: false };
+    entry.debt += Number(owed.outstanding ?? 0);
+    if (owed.dueDate && owed.dueDate < todayIso) entry.overdue = true;
+    debtByGuest.set(contract.guestId, entry);
+  }
 
   const rows = await db
     .select({
@@ -173,6 +192,7 @@ export async function listTenants(): Promise<TenantView[]> {
       startDate: contracts.startDate,
       endDate: contracts.endDate,
       rent: contracts.rent,
+      billingDay: contracts.billingDay,
       roomCode: rooms.code,
       propertyName: properties.name,
     })
@@ -188,16 +208,17 @@ export async function listTenants(): Promise<TenantView[]> {
   const today = new Date();
 
   return rows.map((row) => {
-    const debt = Number(
-      (row.contractId ? outstanding.get(row.contractId)?.outstanding : 0) ?? 0,
-    );
+    const owed = debtByGuest.get(row.guestId);
+    const debt = owed?.debt ?? 0;
     const daysLeft = row.endDate
       ? Math.ceil((new Date(row.endDate).getTime() - today.getTime()) / 86_400_000)
       : null;
 
     const status: TenantView["status"] = !row.contractId
       ? "Đã trả phòng"
-      : debt > 0
+      : // Còn nợ nhưng chưa tới hạn thì chưa phải chậm: đơn lập hôm nay, hạn
+        // tuần sau, không được gắn nhãn đỏ cho khách.
+        debt > 0 && owed?.overdue
         ? "Chậm thanh toán"
         : daysLeft !== null && daysLeft <= EXPIRING_SOON_DAYS
           ? "Sắp hết hạn"
@@ -214,6 +235,7 @@ export async function listTenants(): Promise<TenantView[]> {
       startDate: row.startDate,
       endDate: row.endDate,
       rent: row.rent ?? 0,
+      billingDay: row.billingDay ?? null,
       debt,
       status,
     };

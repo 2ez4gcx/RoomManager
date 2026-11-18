@@ -13,10 +13,11 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    await requireApiUser();
+    const user = await requireApiUser();
 
     const body = (await request.json()) as Record<string, unknown>;
     const room = await createRoom({
+      actorId: user.id,
       propertyId: String(body.propertyId ?? ""),
       roomTypeId: String(body.roomTypeId ?? ""),
       number: String(body.number ?? ""),

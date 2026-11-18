@@ -1,7 +1,7 @@
 "use client";
 
 import {
-  Check, ChevronDown, Download, FileText, LogOut, Phone, Plus, UserPlus, Users, X,
+  Check, ChevronDown, Download, FileText, LogOut, Pencil, Phone, Plus, UserPlus, Users, X,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
@@ -34,6 +34,7 @@ export function TenantsClient({
   const [filter, setFilter] = useState(ALL_STATUSES);
   const [adding, setAdding] = useState(false);
   const [movingOut, setMovingOut] = useState<TenantView | null>(null);
+  const [editing, setEditing] = useState<TenantView | null>(null);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -138,15 +139,24 @@ export function TenantsClient({
                   </td>
                   <td><StatusBadge tone={tones[tenant.status]}>{tenant.status}</StatusBadge></td>
                   <td>
-                    {tenant.contractId && (
+                    <div className="row-actions">
                       <button
                         className="secondary-button"
                         type="button"
-                        onClick={() => setMovingOut(tenant)}
+                        onClick={() => setEditing(tenant)}
                       >
-                        <LogOut size={14} /> Trả phòng
+                        <Pencil size={14} /> Sửa
                       </button>
-                    )}
+                      {tenant.contractId && (
+                        <button
+                          className="secondary-button"
+                          type="button"
+                          onClick={() => setMovingOut(tenant)}
+                        >
+                          <LogOut size={14} /> Trả phòng
+                        </button>
+                      )}
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -161,6 +171,16 @@ export function TenantsClient({
         onClose={() => setMovingOut(null)}
         onDone={() => router.refresh()}
       />
+      <EditTenantModal
+        key={editing?.guestId ?? "none"}
+        tenant={editing}
+        isOwner={currentUser.role === "owner"}
+        onClose={() => setEditing(null)}
+        onSaved={() => {
+          setEditing(null);
+          router.refresh();
+        }}
+      />
       <AddTenantModal
         open={adding}
         vacantRooms={vacantRooms}
@@ -171,6 +191,125 @@ export function TenantsClient({
         }}
       />
     </AppShell>
+  );
+}
+
+/**
+ * Sửa hồ sơ khách và hợp đồng đang hiệu lực.
+ *
+ * Chỉ gửi lên những trường thật sự đổi: máy chủ coi trường vắng mặt là "giữ
+ * nguyên", và nhân viên không có quyền đụng tới các trường của hợp đồng.
+ */
+function EditTenantModal({
+  tenant, isOwner, onClose, onSaved,
+}: {
+  tenant: TenantView | null;
+  isOwner: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  async function submit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!tenant) return;
+    setError("");
+    setSaving(true);
+
+    const form = new FormData(event.currentTarget);
+    const text = (name: string) => String(form.get(name) ?? "").trim();
+    const body: Record<string, unknown> = { guestId: tenant.guestId };
+
+    if (text("fullName") !== tenant.fullName) body.fullName = text("fullName");
+    if (text("phone") !== tenant.phone) body.phone = text("phone");
+    if (isOwner && tenant.contractId) {
+      if (text("rent") !== String(tenant.rent)) body.rent = text("rent");
+      if (text("billingDay") !== String(tenant.billingDay ?? "")) body.billingDay = text("billingDay");
+      if (text("endDate") !== (tenant.endDate ?? "")) body.endDate = text("endDate");
+    }
+
+    try {
+      const response = await fetch("/api/tenants", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) {
+        setError(payload.error ?? "Không lưu được thay đổi.");
+        return;
+      }
+      onSaved();
+    } catch {
+      setError("Không kết nối được máy chủ.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Modal open={!!tenant} onClose={onClose} wide>
+      <div className="modal-heading">
+        <div>
+          <span className="modal-kicker">SỬA HỒ SƠ</span>
+          <h2>{tenant?.fullName}</h2>
+          <p>{tenant?.roomCode ? `Phòng ${tenant.roomCode} · ${tenant.propertyName}` : "Đã trả phòng"}</p>
+        </div>
+        <button className="icon-button" onClick={onClose} aria-label="Đóng"><X size={20} /></button>
+      </div>
+
+      {tenant && (
+        <form onSubmit={submit}>
+          <div className="form-section-title">Thông tin cá nhân</div>
+          <div className="form-grid">
+            <label>Họ và tên<input name="fullName" required defaultValue={tenant.fullName} /></label>
+            <label>Số điện thoại<input name="phone" required inputMode="tel" defaultValue={tenant.phone} /></label>
+          </div>
+
+          {tenant.contractId && (
+            <>
+              <div className="form-section-title">Hợp đồng đang hiệu lực</div>
+              <div className="form-grid">
+                <label>
+                  Giá thuê mỗi tháng
+                  <div className="money-input">
+                    <input name="rent" type="number" min={1} required disabled={!isOwner} defaultValue={tenant.rent} />
+                    <span>VNĐ</span>
+                  </div>
+                </label>
+                <label>
+                  Ngày thu hằng tháng (1–28)
+                  <input
+                    name="billingDay"
+                    type="number"
+                    min={1}
+                    max={28}
+                    required
+                    disabled={!isOwner}
+                    defaultValue={tenant.billingDay ?? 5}
+                  />
+                </label>
+              </div>
+              <label>
+                Ngày hết hạn hợp đồng
+                <input name="endDate" type="date" disabled={!isOwner} defaultValue={tenant.endDate ?? ""} />
+              </label>
+              <p className="modal-hint">
+                {isOwner
+                  ? "Thay đổi áp dụng từ đơn lập sau này; đơn đã lập giữ nguyên số tiền. Để trống ngày hết hạn nếu hợp đồng không thời hạn. Hết hạn không tự kết thúc hợp đồng: khách vẫn được lập đơn cho tới khi trả phòng."
+                  : "Chỉ chủ nhà được sửa giá thuê, ngày thu và thời hạn hợp đồng."}
+              </p>
+            </>
+          )}
+
+          {error && <p className="form-error" role="alert">{error}</p>}
+          <button className="submit-button" type="submit" disabled={saving}>
+            <Check size={16} /> {saving ? "Đang lưu..." : "Lưu thay đổi"}
+          </button>
+        </form>
+      )}
+    </Modal>
   );
 }
 

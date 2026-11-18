@@ -8,12 +8,12 @@
  * chốt sổ nhập tay, và sai một chỉ số là sai tiền của cả tháng. Vì vậy luồng
  * gồm hai bước — xem trước rồi mới phát hành.
  */
-import { and, desc, eq, inArray, isNotNull, isNull, lte, ne, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, lte, ne, sql } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import { getDb } from "./index";
 import { newId } from "./ids";
 import {
-  insertChunked,
+  chunkRows,
   ISO_DATE,
   selectInChunks,
   todayInVietnam,
@@ -238,7 +238,7 @@ export async function billingPreview(
   }
 
   const db = getDb();
-  const { start, end } = periodBounds(period);
+  const { end } = periodBounds(period);
   const settings = await getSettings();
 
   const rows = await db
@@ -265,8 +265,10 @@ export async function billingPreview(
         eq(contracts.status, "active"),
         // Hợp đồng bắt đầu sau kỳ thì chưa phát sinh tiền.
         lte(contracts.startDate, isoDate(end)),
-        // Hợp đồng kết thúc trước kỳ thì thôi. `endDate` trống nghĩa là chưa hẹn ngày kết thúc.
-        or(isNull(contracts.endDate), sql`${contracts.endDate} >= ${isoDate(start)}`),
+        // KHÔNG lọc theo `endDate`. Đó chỉ là ngày dự kiến hết hạn; khách ở quá
+        // ngày đó mà chưa làm thủ tục trả phòng thì vẫn đang ở và vẫn phải được
+        // lập đơn. Trước đây hợp đồng qua tháng thứ 12 lặng lẽ rơi khỏi kỳ thu,
+        // không ai được báo. Hợp đồng chỉ thôi phát sinh tiền khi trả phòng.
       ),
     )
     .orderBy(properties.sortOrder, rooms.number);
@@ -572,27 +574,34 @@ export async function issueInvoices(input: IssueInput): Promise<IssueResult> {
     );
   }
 
-  // Ghi chỉ số trước: dòng điện của đơn trỏ tới bản ghi chỉ số.
+  // Ghi chỉ số, đơn và các dòng của đơn trong MỘT lô nguyên tử. Ghi từng bước
+  // thì hỏng giữa chừng để lại chỉ số đã bị ghi đè mà không có đơn, hoặc đơn có
+  // tổng tiền mà không có dòng nào.
   //
-  // Ghi đè nếu kỳ này đã có chỉ số — xảy ra khi đơn cũ bị hủy rồi lập lại.
-  // Bản ghi cũ được giữ nguyên lúc hủy để không mất mốc chỉ số đầu kỳ.
-  await insertChunked(meterReadings, readingRows, (chunk) =>
-    db
-      .insert(meterReadings)
-      .values(chunk)
-      .onConflictDoUpdate({
-        target: [meterReadings.roomId, meterReadings.kind, meterReadings.period],
-        set: {
-          previousValue: sql`excluded.previous_value`,
-          currentValue: sql`excluded.current_value`,
-          unitPrice: sql`excluded.unit_price`,
-          readAt: sql`excluded.read_at`,
-          updatedAt: sql`(unixepoch() * 1000)`,
-        },
-      }),
-  );
-  await insertChunked(invoices, invoiceRows, (chunk) => db.insert(invoices).values(chunk));
-  await insertChunked(invoiceItems, itemRows, (chunk) => db.insert(invoiceItems).values(chunk));
+  // Chỉ số ghi đè nếu kỳ này đã có — xảy ra khi đơn cũ bị hủy rồi lập lại. Bản
+  // ghi cũ được giữ nguyên lúc hủy để không mất mốc chỉ số đầu kỳ.
+  const statements: BatchItem<"sqlite">[] = [
+    ...chunkRows(meterReadings, readingRows).map((chunk) =>
+      db
+        .insert(meterReadings)
+        .values(chunk)
+        .onConflictDoUpdate({
+          target: [meterReadings.roomId, meterReadings.kind, meterReadings.period],
+          set: {
+            previousValue: sql`excluded.previous_value`,
+            currentValue: sql`excluded.current_value`,
+            unitPrice: sql`excluded.unit_price`,
+            readAt: sql`excluded.read_at`,
+            updatedAt: sql`(unixepoch() * 1000)`,
+          },
+        }),
+    ),
+    ...chunkRows(invoices, invoiceRows).map((chunk) => db.insert(invoices).values(chunk)),
+    ...chunkRows(invoiceItems, itemRows).map((chunk) => db.insert(invoiceItems).values(chunk)),
+  ];
+  if (statements.length > 0) {
+    await db.batch(statements as [BatchItem<"sqlite">, ...BatchItem<"sqlite">[]]);
+  }
 
   if (invoiceRows.length > 0) {
     await writeAudit(db, {

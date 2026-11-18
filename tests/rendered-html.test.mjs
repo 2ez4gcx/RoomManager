@@ -1740,6 +1740,172 @@ test("trả phòng khi kỳ chưa có đơn: lập đơn chốt và cấn vào c
   );
 });
 
+/* ------------------------------------------------------------------ */
+/* Sửa hồ sơ, tiền cọc, hợp đồng quá hạn, phân quyền, Origin          */
+/* ------------------------------------------------------------------ */
+
+test("bỏ trống tiền cọc là không thu cọc, và thời hạn hợp đồng phải hợp lệ", async () => {
+  const { rooms } = await (await authed("/api/rooms")).json();
+  const vacant = rooms.find((room) => room.status === "Trống");
+  assert.ok(vacant, "cần một phòng trống");
+  const today = new Date().toISOString().slice(0, 10);
+  const base = { fullName: "Khách Không Cọc", phone: "0905550061", roomId: vacant.id, startDate: today };
+
+  for (const months of [0, -1, 500]) {
+    const bad = await json("/api/tenants", { ...base, months });
+    assert.equal(bad.status, 400, `thời hạn ${months} tháng phải bị từ chối`);
+  }
+  assert.equal((await json("/api/tenants", { ...base, startDate: "2026-02-31" })).status, 400);
+
+  const before = await ledgerTotals();
+  // Ô tiền cọc để trống: biểu mẫu gửi chuỗi rỗng.
+  const created = await json("/api/tenants", { ...base, deposit: "" });
+  assert.equal(created.status, 201);
+  const after = await ledgerTotals();
+  assert.equal(after.deposits - before.deposits, 0, "sổ quỹ ghi một khoản cọc chưa từng thu");
+
+  const { tenants } = await (await authed("/api/tenants")).json();
+  const tenant = tenants.find((row) => row.fullName === "Khách Không Cọc");
+  const preview = await (await authed(`/api/move-out?contractId=${tenant.contractId}`)).json();
+  assert.equal(preview.deposit, 0);
+});
+
+test("sửa được hồ sơ và hợp đồng; hợp đồng quá hạn vẫn được lập đơn", async () => {
+  const find = async () =>
+    (await (await authed("/api/tenants")).json()).tenants.find(
+      (row) => row.phone === "0905550061" || row.phone === "0905550062",
+    );
+  const tenant = await find();
+  const today = new Date().toISOString().slice(0, 10);
+
+  const bad = await json("/api/tenants", { guestId: tenant.guestId, phone: "abc" }, "PATCH");
+  assert.equal(bad.status, 400);
+
+  const saved = await json(
+    "/api/tenants",
+    {
+      guestId: tenant.guestId,
+      fullName: "Khách Đã Sửa",
+      phone: "0905550062",
+      rent: 2750000,
+      billingDay: 12,
+      // Hết hạn ngay hôm nay: khách vẫn đang ở, chưa trả phòng.
+      endDate: today,
+    },
+    "PATCH",
+  );
+  assert.equal(saved.status, 200, JSON.stringify(await saved.clone().json()));
+
+  const after = await find();
+  assert.equal(after.fullName, "Khách Đã Sửa");
+  assert.equal(after.rent, 2750000);
+  assert.equal(after.billingDay, 12);
+  assert.equal(after.endDate, today);
+
+  // Ngày kết thúc trước ngày bắt đầu là nhập nhầm.
+  const before = await json(
+    "/api/tenants",
+    { guestId: tenant.guestId, endDate: "2020-01-01" },
+    "PATCH",
+  );
+  assert.equal(before.status, 400);
+
+  // Kỳ sau ngày hết hạn: hợp đồng vẫn hiệu lực nên vẫn phải nằm trong kỳ thu,
+  // với giá thuê và ngày thu mới.
+  const period = nextPeriod(2);
+  const row = (await preview(period)).rows.find((item) => item.contractId === tenant.contractId);
+  assert.ok(row, "hợp đồng quá hạn bị rơi khỏi kỳ thu");
+  assert.equal(row.rent, 2750000);
+  assert.equal(row.dueDate, `${period}-12`);
+});
+
+test("nhân viên không hủy được đơn, không ghi đè tiền phòng, không sửa hợp đồng", async () => {
+  const created = await json("/api/users", {
+    email: "nv-quyen@example.com",
+    fullName: "Nhân Viên Quyền",
+    password: "nhanvienquyen1",
+    role: "staff",
+  });
+  assert.equal(created.status, 201);
+  const asStaff = withCookie(await loginCookie("nv-quyen@example.com", "nhanvienquyen1", "192.0.2.77"));
+  const staffJson = (pathname, body, method = "POST") =>
+    asStaff(pathname, {
+      method,
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    });
+
+  const { tenants } = await (await authed("/api/tenants")).json();
+  const tenant = tenants.find((row) => row.fullName === "Khách Đã Sửa");
+
+  // Tên và số điện thoại thì sửa được, các trường của hợp đồng thì không.
+  assert.equal(
+    (await staffJson("/api/tenants", { guestId: tenant.guestId, phone: "0905550063" }, "PATCH")).status,
+    200,
+  );
+  assert.equal(
+    (await staffJson("/api/tenants", { guestId: tenant.guestId, rent: 1000 }, "PATCH")).status,
+    403,
+  );
+
+  const period = nextPeriod(2);
+  const row = (await preview(period)).rows.find((item) => item.contractId === tenant.contractId);
+  const entry = {
+    contractId: row.contractId,
+    ...(row.hasPreviousReading ? {} : { previousReading: 0 }),
+  };
+  const override = await staffJson("/api/billing", { period, entries: [{ ...entry, rent: 1000 }] });
+  assert.equal(override.status, 403, "nhân viên ghi đè được tiền phòng");
+
+  // Lập đơn theo giá hợp đồng thì nhân viên vẫn làm được.
+  assert.equal((await staffJson("/api/billing", { period, entries: [entry] })).status, 201);
+
+  const { invoices } = await (await authed(`/api/invoices?period=${period}`)).json();
+  const invoice = invoices.find((item) => item.roomCode === row.roomCode);
+  const cancel = { invoiceId: invoice.id, reason: "Thử quyền" };
+  assert.equal((await staffJson("/api/invoices/cancel", cancel)).status, 403);
+  assert.equal((await json("/api/invoices/cancel", cancel)).status, 200);
+});
+
+test("khách đã trả phòng mà còn nợ thì vẫn hiện công nợ", async () => {
+  const { tenants } = await (await authed("/api/tenants")).json();
+  const tenant = tenants.find((row) => row.fullName === "Khách Đã Sửa");
+
+  // Không có cọc: đơn chốt tháng cuối còn nguyên, khách rời đi mà vẫn nợ.
+  const moved = await json("/api/move-out", {
+    contractId: tenant.contractId,
+    endDate: new Date().toISOString().slice(0, 10),
+    issueFinalInvoice: true,
+  });
+  assert.equal(moved.status, 200);
+  const result = await moved.json();
+  assert.ok(result.closingInvoice.total > 0);
+  assert.equal(result.stillOwed, result.closingInvoice.total);
+
+  const after = (await (await authed("/api/tenants")).json()).tenants.find(
+    (row) => row.guestId === tenant.guestId,
+  );
+  assert.equal(after.status, "Đã trả phòng");
+  assert.equal(after.debt, result.closingInvoice.total, "nợ của khách đã trả phòng bị bỏ sót");
+});
+
+test("yêu cầu ghi dữ liệu từ trang khác bị từ chối", async () => {
+  const send = (origin) =>
+    authed("/api/ledger", {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(origin ? { origin } : {}) },
+      body: JSON.stringify({ direction: "out", category: "Bảo trì", amount: 1000 }),
+    });
+
+  assert.equal((await send("https://trang-la.example")).status, 403);
+  assert.equal((await send("http://localhost")).status, 201, "cùng nguồn phải đi qua");
+  assert.equal((await send(null)).status, 201, "lệnh không có Origin (script) phải đi qua");
+
+  // Đọc thì không bị chặn.
+  const read = await authed("/api/rooms", { headers: { origin: "https://trang-la.example" } });
+  assert.equal(read.status, 200);
+});
+
 test("cọc được cấn vào đơn còn nợ, phần dư mới hoàn lại", async () => {
   const { tenant, room } = await rentARoom("Khách Còn Nợ", "0905550002", 6000000);
 
@@ -1976,9 +2142,10 @@ test("đơn đã hủy không còn tính vào công nợ của khách", async ()
     200,
   );
 
+  // Phòng có thể còn nợ từ các đơn khác; chỉ phần của đơn vừa hủy phải biến mất.
   const after = await (await authed("/api/rooms")).json();
   const roomAfter = after.rooms.find((room) => room.code === target.roomCode);
-  assert.equal(roomAfter.outstanding, 0);
+  assert.equal(roomAfter.outstanding, roomBefore.outstanding - invoice.outstanding);
   assert.ok(period);
 });
 
@@ -2180,7 +2347,20 @@ test("xuất đơn thu tách đúng từng khoản tiền", async () => {
 
   const rows = sheetRows(workbook);
   const { invoices } = await (await authed(`/api/invoices?period=${period}`)).json();
-  assert.equal(rows.length - 1, invoices.length);
+  // Một dòng tiêu đề, mỗi đơn một dòng, và một dòng tổng ở cuối.
+  assert.equal(rows.length - 2, invoices.length);
+
+  const live = invoices.filter((invoice) => invoice.status !== "cancelled");
+  const totals = rows.at(-1);
+  assert.equal(totals[0], "TỔNG");
+  assert.equal(totals[10], live.reduce((sum, invoice) => sum + invoice.total, 0), "dòng tổng sai");
+  assert.equal(totals[12], live.reduce((sum, invoice) => sum + invoice.outstanding, 0));
+
+  // Đơn đã hủy vẫn được liệt kê nhưng không mang số tiền.
+  for (const cancelled of invoices.filter((invoice) => invoice.status === "cancelled")) {
+    const cancelledRow = rows.find((item) => item[0] === cancelled.code);
+    assert.equal(cancelledRow[10], 0, `đơn đã hủy ${cancelled.code} vẫn mang tổng tiền`);
+  }
 
   const target = invoices.find((invoice) => invoice.status !== "cancelled");
   const row = rows.find((item) => item[0] === target.code);

@@ -295,6 +295,7 @@ button.property-card { width: 100%; text-align: left; font: inherit; color: inhe
 .modal-hint { margin: 10px 0 0; color: var(--muted); font-size: 15px; line-height: 1.55; }
 .hold-note { margin: 12px 0 0; padding: 10px 12px; border-radius: 9px; background: #fff6e4; border-left: 3px solid var(--gold); color: #7d6a3c; font-size: 15px; }
 .form-grid-three { grid-template-columns: 1fr 1fr 1fr; }
+.row-actions { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
 .entry-modal label.checkbox-line { display: flex; flex-direction: row; align-items: center; gap: 8px; align-self: end; padding-bottom: 10px; font-weight: 600; }
 .entry-modal label.checkbox-line input { width: auto; margin: 0; flex: none; }
 .heading-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }

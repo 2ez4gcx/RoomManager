@@ -15,7 +15,7 @@
  * 2. Theo IP: chặn kiểu rải một mật khẩu phổ biến lên nhiều tài khoản từ cùng
  *    một máy — kiểu tấn công mà ngưỡng thứ nhất không bắt được.
  */
-import { and, eq, gte, lt, ne, sql } from "drizzle-orm";
+import { and, eq, gte, lt, sql } from "drizzle-orm";
 import { getDb } from "./index";
 import { newId } from "./ids";
 import { loginAttempts } from "./schema";
@@ -33,6 +33,9 @@ export const MAX_ATTEMPTS_PER_IP = 20;
  * Định danh dành riêng cho lượt gửi biểu mẫu đặt phòng công khai. Có ký tự `@`
  * ở đầu nên không trùng được với email hay tên đăng nhập nào.
  */
+/** Số lần xác minh sai tối đa của một tài khoản trong cửa sổ (mã hai bước, mật khẩu hiện tại). */
+export const MAX_VERIFICATION_ATTEMPTS = 10;
+
 export const BOOKING_FORM_KEY = "@bieu-mau-dat-phong";
 
 /** Số yêu cầu đặt phòng tối đa từ một IP trong cửa sổ. */
@@ -120,9 +123,10 @@ export async function registerAttempt(
     .where(
       and(
         eq(loginAttempts.ip, ip),
-        // Lượt gửi biểu mẫu đặt phòng dùng chung bảng nhưng không phải lần
-        // đăng nhập sai; đếm vào đây thì khách gửi form sẽ khóa luôn đăng nhập.
-        ne(loginAttempts.identifier, BOOKING_FORM_KEY),
+        // Định danh bắt đầu bằng `@` là của các bộ đếm khác dùng chung bảng
+        // (biểu mẫu đặt phòng, xác minh sau đăng nhập), không phải lần đăng
+        // nhập sai; đếm vào đây thì khách gửi form sẽ khóa luôn đăng nhập.
+        sql`${loginAttempts.identifier} NOT LIKE '@%'`,
         gte(loginAttempts.createdAt, since),
       ),
     )
@@ -228,5 +232,43 @@ export async function registerBookingSubmission(ip: string) {
   return {
     blocked: true,
     retryAfterSeconds: Math.max(Math.ceil((unlockAt - Date.now()) / 1000), 1),
+  };
+}
+
+/**
+ * Giới hạn số lần nhập sai ở các bước xác minh SAU khi đã đăng nhập: mã hai
+ * bước lúc bật/tắt, mật khẩu hiện tại lúc đổi mật khẩu.
+ *
+ * Không có giới hạn thì một phiên bị đánh cắp dò được mã 6 chữ số (hay mật
+ * khẩu hiện tại) bằng cách thử liên tục. Dùng chung cơ chế với đăng nhập, định
+ * danh gắn với tài khoản và có `@` ở đầu để không trùng tên đăng nhập nào.
+ * Xác minh đúng thì gọi `discardAttempt` để lần thử đó không bị tính.
+ */
+export async function registerVerificationAttempt(userId: string, ip: string) {
+  const db = getDb();
+  const key = `@xac-minh:${userId}`;
+
+  const attemptId = newId("att");
+  await db.insert(loginAttempts).values({ id: attemptId, identifier: key, ip });
+  await db.delete(loginAttempts).where(lt(loginAttempts.createdAt, windowStart()));
+
+  // Đếm theo TÀI KHOẢN, trên mọi IP: người đang dò đã có sẵn phiên của tài
+  // khoản này, đổi IP không được cho thêm lượt. Không đếm chung với bộ đếm
+  // theo IP của đăng nhập, để vài lần gõ sai mật khẩu ở cổng đăng nhập không
+  // khóa luôn việc đổi mật khẩu.
+  const [row] = await db
+    .select({
+      count: sql<number>`count(*)`,
+      oldest: sql<number>`min(${loginAttempts.createdAt})`,
+    })
+    .from(loginAttempts)
+    .where(and(eq(loginAttempts.identifier, key), gte(loginAttempts.createdAt, windowStart())));
+
+  const blocked = Number(row?.count ?? 0) > MAX_VERIFICATION_ATTEMPTS;
+  const unlockAt = Number(row?.oldest ?? Date.now()) + THROTTLE_WINDOW_MS;
+  return {
+    attemptId,
+    blocked,
+    retryAfterSeconds: blocked ? Math.max(Math.ceil((unlockAt - Date.now()) / 1000), 1) : 0,
   };
 }

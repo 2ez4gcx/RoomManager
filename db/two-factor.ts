@@ -160,7 +160,11 @@ export async function disableTwoFactor(userId: string, code: string) {
   const db = getDb();
 
   const [user] = await db
-    .select({ totpSecret: users.totpSecret, totpEnabledAt: users.totpEnabledAt })
+    .select({
+      totpSecret: users.totpSecret,
+      totpEnabledAt: users.totpEnabledAt,
+      totpLastCounter: users.totpLastCounter,
+    })
     .from(users)
     .where(eq(users.id, userId))
     .limit(1);
@@ -168,7 +172,14 @@ export async function disableTwoFactor(userId: string, code: string) {
     throw new ValidationError("Xác thực hai bước chưa được bật.", "totp");
   }
 
-  const accepted = await consumeSecondFactor(userId, user.totpSecret, null, code);
+  // Truyền mốc mã đã dùng gần nhất: mã vừa dùng để đăng nhập (người đứng sau
+  // lưng nhìn thấy) không dùng lại được để tắt hai bước.
+  const accepted = await consumeSecondFactor(
+    userId,
+    user.totpSecret,
+    user.totpLastCounter,
+    code,
+  );
   if (!accepted) {
     throw new ValidationError("Mã không đúng.", "code");
   }

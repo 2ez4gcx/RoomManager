@@ -30,6 +30,12 @@ export async function createBookingRequest(input: BookingRequestInput) {
   const fullName = input.fullName.trim();
   const phone = input.phone.replace(/\s+/g, "");
   if (!fullName) throw new ValidationError("Cần nhập họ tên.", "fullName");
+  if (fullName.length > 120) throw new ValidationError("Họ tên quá dài.", "fullName");
+
+  const email = input.email?.trim() || null;
+  if (email && (email.length > 160 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
+    throw new ValidationError("Email không hợp lệ.", "email");
+  }
   if (!/^0\d{8,10}$/.test(phone)) {
     throw new ValidationError("Số điện thoại không hợp lệ.", "phone");
   }
@@ -43,11 +49,27 @@ export async function createBookingRequest(input: BookingRequestInput) {
 
   if (input.roomId) {
     const [room] = await db
-      .select({ id: rooms.id, propertyId: rooms.propertyId, roomTypeId: rooms.roomTypeId })
+      .select({
+        id: rooms.id,
+        propertyId: rooms.propertyId,
+        roomTypeId: rooms.roomTypeId,
+        condition: rooms.condition,
+      })
       .from(rooms)
       .where(eq(rooms.id, input.roomId))
       .limit(1);
-    if (!room) throw new ValidationError("Phòng không còn khả dụng.", "roomId");
+    // Chỉ nhận yêu cầu cho phòng đang cho thuê được: không bảo trì, không có
+    // hợp đồng hiệu lực. Mã phòng do người ngoài gửi lên, không tin được.
+    const [occupied] = room
+      ? await db
+          .select({ id: contracts.id })
+          .from(contracts)
+          .where(and(eq(contracts.roomId, room.id), eq(contracts.status, "active")))
+          .limit(1)
+      : [];
+    if (!room || room.condition !== "usable" || occupied) {
+      throw new ValidationError("Phòng không còn khả dụng.", "roomId");
+    }
     roomId = room.id;
     propertyId = room.propertyId;
     roomTypeId = room.roomTypeId;
@@ -61,12 +83,15 @@ export async function createBookingRequest(input: BookingRequestInput) {
       code: await nextCode(db, bookingRequests, bookingRequests.code, "DP"),
       fullName,
       phone,
-      email: input.email?.trim() || null,
+      email,
       propertyId,
       roomTypeId,
       roomId,
       preferredMoveIn: input.preferredMoveIn ?? null,
-      occupants: Math.min(Math.max(input.occupants ?? 1, 1), 10),
+      // Giá trị không phải số nguyên (NaN) lọt qua Math.min/max, nên kiểm trước.
+      occupants: Number.isInteger(input.occupants)
+        ? Math.min(Math.max(input.occupants as number, 1), 10)
+        : 1,
       // Cắt độ dài để biểu mẫu công khai không nhồi được dữ liệu lớn vào CSDL.
       message: (input.message ?? "").slice(0, 1000),
       status: "new",

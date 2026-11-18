@@ -1,6 +1,6 @@
 import { billingPreview, issueInvoices } from "../../../db/billing";
 import { todayInVietnam } from "../../../db/internal";
-import { requireApiUser, toErrorResponse, toNumber } from "../../lib/api";
+import { ForbiddenError, requireApiUser, toErrorResponse, toNumber } from "../../lib/api";
 
 function currentPeriod() {
   return todayInVietnam().slice(0, 7);
@@ -34,6 +34,15 @@ export async function POST(request: Request) {
       );
     }
     const entries = body.entries;
+
+    // Chốt sổ theo giá hợp đồng thì nhân viên làm được. Ghi đè tiền phòng là
+    // đổi số tiền phải thu, nên chỉ chủ nhà.
+    const overridesRent = entries.some(
+      (raw) => toNumber((raw as Record<string, unknown>).rent) !== null,
+    );
+    if (overridesRent && user.role !== "owner") {
+      throw new ForbiddenError("Chỉ chủ nhà được ghi đè tiền phòng khi lập đơn.");
+    }
 
     const result = await issueInvoices({
       period: String(body.period ?? currentPeriod()),
