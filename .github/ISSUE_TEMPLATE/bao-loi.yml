@@ -1,0 +1,55 @@
+name: Báo lỗi
+description: Phần mềm chạy sai, báo lỗi hoặc ra con số không đúng
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Cảm ơn bạn đã báo lỗi.
+
+        **Đừng dán dữ liệu thật của khách thuê** (tên, số điện thoại, số CCCD). Che đi hoặc dùng dữ liệu mẫu.
+        Lỗ hổng bảo mật thì đừng báo ở đây — xem tab Security của repository.
+  - type: dropdown
+    id: kieu-chay
+    attributes:
+      label: Bạn đang chạy kiểu nào?
+      options:
+        - Xem thử (start.bat hoặc npm run dev)
+        - Server trên máy (chay-server.bat hoặc npm start)
+        - Cloudflare Workers
+        - Khác / không rõ
+    validations:
+      required: true
+  - type: textarea
+    id: mo-ta
+    attributes:
+      label: Chuyện gì đã xảy ra?
+      description: Mô tả ngắn gọn, kèm thông báo lỗi nếu có.
+    validations:
+      required: true
+  - type: textarea
+    id: cac-buoc
+    attributes:
+      label: Các bước để gặp lại lỗi
+      placeholder: |
+        1. Vào trang ...
+        2. Bấm ...
+        3. Thấy ...
+    validations:
+      required: true
+  - type: textarea
+    id: mong-doi
+    attributes:
+      label: Bạn mong đợi điều gì?
+    validations:
+      required: true
+  - type: input
+    id: phien-ban
+    attributes:
+      label: Phiên bản hoặc mã commit
+      description: Xem trong package.json, hoặc chạy `git rev-parse --short HEAD`.
+  - type: input
+    id: moi-truong
+    attributes:
+      label: Hệ điều hành, phiên bản Node.js và trình duyệt
+      placeholder: "Windows 11, Node 24.1, Chrome 140"

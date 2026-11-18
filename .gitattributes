@@ -1,0 +1,9 @@
+# Lưu trong kho luôn là LF, bất kể máy của người đóng góp cấu hình thế nào.
+* text=auto eol=lf
+
+# File .bat phải xuống dòng kiểu Windows khi checkout, nếu không cmd.exe đọc sai.
+*.bat text eol=crlf
+
+*.png binary
+*.jpg binary
+*.svg text eol=lf

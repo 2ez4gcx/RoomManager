@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Báo lỗ hổng bảo mật
+    url: https://github.com/2ez4gcx/RoomManager/security/advisories/new
+    about: Báo riêng cho người duy trì, không hiện công khai. Đừng mở issue cho lỗ hổng bảo mật.
+  - name: Hướng dẫn cài đặt
+    url: https://github.com/2ez4gcx/RoomManager/blob/main/docs/HUONG-DAN-CAI-DAT.md
+    about: Câu hỏi về cách cài và chạy thường đã có câu trả lời ở đây.

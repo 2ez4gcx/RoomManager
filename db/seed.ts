@@ -44,7 +44,7 @@ type Db = ReturnType<typeof getDb>;
  * Muốn dùng thật thì khởi tạo trống rồi tạo tài khoản riêng — xem mục "Dùng
  * thật" trong README.
  */
-export const OWNER_EMAIL = "quanly@hoangan.vn";
+export const OWNER_EMAIL = "quanly@example.com";
 export const OWNER_PASSWORD = "roommanager";
 
 function isoDate(date: Date) {
@@ -540,7 +540,7 @@ export async function seed(db: Db) {
     [
       { key: "org.name", value: "Hệ thống nhà trọ Hoàng An" },
       { key: "org.phone", value: "0901234567" },
-      { key: "org.email", value: "quanly@hoangan.vn" },
+      { key: "org.email", value: "quanly@example.com" },
       { key: "org.address", value: "125 Nguyễn Văn Linh, Quận 7, TP.HCM" },
       { key: "rate.electricity", value: String(electricityPrice) },
       { key: "rate.water", value: String(waterPricePerPerson) },

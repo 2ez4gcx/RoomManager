@@ -9,6 +9,7 @@ declare namespace Cloudflare {
     ASSETS: Fetcher;
     DB: D1Database;
     ALLOW_DEV_SETUP?: string;
+    DEV_SETUP_TOKEN?: string;
     NODE_ENV?: string;
   }
 }

@@ -19,7 +19,7 @@ import { hashPassword } from "../db/password-hash.ts";
 
 const distServer = fileURLToPath(new URL("../dist/server", import.meta.url));
 
-const OWNER_EMAIL = "quanly@hoangan.vn";
+const OWNER_EMAIL = "quanly@example.com";
 const OWNER_PASSWORD = "roommanager";
 
 /**
@@ -292,7 +292,7 @@ test("tạo được tài khoản chủ nhà đầu tiên trên cơ sở dữ li
   const fresh = await makeWorker("room-manager-bootstrap", { ALLOW_DEV_SETUP: "true" });
   const call = (pathname, init) => fresh.dispatchFetch(`http://localhost${pathname}`, init);
   const owner = {
-    email: "chunha@nhatro.vn",
+    email: "chunha@example.com",
     fullName: "Trần Văn A",
     password: "matkhauthat2026",
     phone: "0901234567",
@@ -322,7 +322,7 @@ test("tạo được tài khoản chủ nhà đầu tiên trên cơ sở dữ li
     // khoản tiếp theo bắt buộc đi qua trang Tài khoản, nơi có kiểm tra quyền.
     const second = await post("/api/dev/create-owner", {
       ...owner,
-      email: "kekhac@nhatro.vn",
+      email: "kekhac@example.com",
     });
     assert.equal(second.status, 409);
   } finally {
@@ -387,7 +387,7 @@ test("route tạo chủ nhà cũng bị khóa khi không khai báo ALLOW_DEV_SET
     const response = await locked.dispatchFetch("http://localhost/api/dev/create-owner", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ email: "ke@xau.vn", fullName: "Kẻ Xấu", password: "12345678" }),
+      body: JSON.stringify({ email: "ke-xau@example.com", fullName: "Kẻ Xấu", password: "12345678" }),
     });
     assert.equal(response.status, 403);
   } finally {
@@ -969,7 +969,7 @@ test("chỉ chủ nhà xem được danh sách tài khoản", async () => {
 
 test("tạo tài khoản nhân viên và đăng nhập được bằng tài khoản đó", async () => {
   const created = await json("/api/users", {
-    email: "nhanvien@hoangan.vn",
+    email: "nhanvien@example.com",
     fullName: "Nhân Viên Một",
     phone: "0909112233",
     password: "nhanvien123",
@@ -980,7 +980,7 @@ test("tạo tài khoản nhân viên và đăng nhập được bằng tài kho�
   const response = await anonymous("/api/auth/login", {
     method: "POST",
     headers: { "content-type": "application/json", "cf-connecting-ip": "192.0.2.50" },
-    body: JSON.stringify({ email: "nhanvien@hoangan.vn", password: "nhanvien123" }),
+    body: JSON.stringify({ email: "nhanvien@example.com", password: "nhanvien123" }),
   });
   assert.equal(response.status, 200);
   assert.equal((await response.json()).user.role, "staff");
@@ -988,7 +988,7 @@ test("tạo tài khoản nhân viên và đăng nhập được bằng tài kho�
 
 test("nhân viên không vào được trang và API dành riêng cho chủ nhà", async () => {
   const asStaff = withCookie(
-    await loginCookie("nhanvien@hoangan.vn", "nhanvien123", "192.0.2.51"),
+    await loginCookie("nhanvien@example.com", "nhanvien123", "192.0.2.51"),
   );
 
   // Đọc dữ liệu vận hành thì được.
@@ -1006,13 +1006,13 @@ test("nhân viên không vào được trang và API dành riêng cho chủ nhà
 
 test("từ chối email trùng và mật khẩu quá ngắn", async () => {
   const duplicate = await json("/api/users", {
-    email: "nhanvien@hoangan.vn",
+    email: "nhanvien@example.com",
     fullName: "Trùng Email",
     password: "matkhau12345",
     role: "staff",
   });
   const shortPassword = await json("/api/users", {
-    email: "nguoimoi@hoangan.vn",
+    email: "nguoimoi@example.com",
     fullName: "Mật Khẩu Ngắn",
     password: "abc",
     role: "staff",
@@ -1025,11 +1025,11 @@ test("từ chối email trùng và mật khẩu quá ngắn", async () => {
 });
 
 test("khóa tài khoản thì đăng xuất ngay và không đăng nhập lại được", async () => {
-  const cookie = await loginCookie("nhanvien@hoangan.vn", "nhanvien123", "192.0.2.52");
+  const cookie = await loginCookie("nhanvien@example.com", "nhanvien123", "192.0.2.52");
   const asStaff = withCookie(cookie);
   assert.equal((await asStaff("/api/rooms")).status, 200, "tiền đề: phiên phải dùng được");
 
-  const staff = await findUser("nhanvien@hoangan.vn");
+  const staff = await findUser("nhanvien@example.com");
   assert.equal((await json("/api/users", { id: staff.id, isActive: false }, "PATCH")).status, 200);
 
   // Khóa mà phiên vẫn sống thì việc khóa không có tác dụng ngay.
@@ -1038,26 +1038,26 @@ test("khóa tài khoản thì đăng xuất ngay và không đăng nhập lại 
   const relogin = await anonymous("/api/auth/login", {
     method: "POST",
     headers: { "content-type": "application/json", "cf-connecting-ip": "192.0.2.53" },
-    body: JSON.stringify({ email: "nhanvien@hoangan.vn", password: "nhanvien123" }),
+    body: JSON.stringify({ email: "nhanvien@example.com", password: "nhanvien123" }),
   });
   assert.equal(relogin.status, 401);
 
   // Mở khóa lại thì vào được.
   assert.equal((await json("/api/users", { id: staff.id, isActive: true }, "PATCH")).status, 200);
-  await loginCookie("nhanvien@hoangan.vn", "nhanvien123", "192.0.2.54");
+  await loginCookie("nhanvien@example.com", "nhanvien123", "192.0.2.54");
 });
 
 test("chủ nhà đặt lại mật khẩu cho người khác, phiên của người đó bị hủy", async () => {
   const asStaff = withCookie(
-    await loginCookie("nhanvien@hoangan.vn", "nhanvien123", "192.0.2.55"),
+    await loginCookie("nhanvien@example.com", "nhanvien123", "192.0.2.55"),
   );
 
-  const staff = await findUser("nhanvien@hoangan.vn");
+  const staff = await findUser("nhanvien@example.com");
   const reset = await json("/api/users", { id: staff.id, newPassword: "matkhaumoi456" }, "PATCH");
   assert.equal(reset.status, 200);
 
   assert.equal((await asStaff("/api/rooms")).status, 401);
-  await loginCookie("nhanvien@hoangan.vn", "matkhaumoi456", "192.0.2.56");
+  await loginCookie("nhanvien@example.com", "matkhaumoi456", "192.0.2.56");
 });
 
 test("không tự khóa hay tự hạ quyền chính mình", async () => {
@@ -1084,7 +1084,7 @@ test("luôn phải còn ít nhất một chủ nhà đang hoạt động", async
   }
 
   // Cấp quyền chủ nhà cho nhân viên rồi hạ lại: được, vì vẫn còn chủ nhà khác.
-  const staff = await findUser("nhanvien@hoangan.vn");
+  const staff = await findUser("nhanvien@example.com");
   assert.equal((await json("/api/users", { id: staff.id, role: "owner" }, "PATCH")).status, 200);
   assert.equal((await json("/api/users", { id: staff.id, role: "staff" }, "PATCH")).status, 200);
 
@@ -1092,7 +1092,7 @@ test("luôn phải còn ít nhất một chủ nhà đang hoạt động", async
   // thao tác, vì tự khóa mình đã bị chặn bởi ràng buộc riêng.
   assert.equal((await json("/api/users", { id: staff.id, role: "owner" }, "PATCH")).status, 200);
   const asOtherOwner = withCookie(
-    await loginCookie("nhanvien@hoangan.vn", "matkhaumoi456", "192.0.2.57"),
+    await loginCookie("nhanvien@example.com", "matkhaumoi456", "192.0.2.57"),
   );
   assert.equal((await json("/api/users", { id: staff.id, role: "staff" }, "PATCH")).status, 200);
 
@@ -1109,7 +1109,7 @@ test("trang quản lý tài khoản kết xuất được cho chủ nhà", async
   assert.equal(response.status, 200);
 
   const html = await response.text();
-  assert.match(html, /nhanvien@hoangan.vn/);
+  assert.match(html, /nhanvien@example.com/);
 });
 
 /* ------------------------------------------------------------------ */
@@ -1122,7 +1122,7 @@ function tokenFromPath(path) {
 }
 
 test("chỉ chủ nhà cấp được link đặt lại", async () => {
-  const staff = await findUser("nhanvien@hoangan.vn");
+  const staff = await findUser("nhanvien@example.com");
 
   assert.equal(
     (await anonymous("/api/auth/reset-link", {
@@ -1134,7 +1134,7 @@ test("chỉ chủ nhà cấp được link đặt lại", async () => {
   );
 
   const asStaff = withCookie(
-    await loginCookie("nhanvien@hoangan.vn", "matkhaumoi456", "203.0.113.60"),
+    await loginCookie("nhanvien@example.com", "matkhaumoi456", "203.0.113.60"),
   );
   const staffTry = await asStaff("/api/auth/reset-link", {
     method: "POST",
@@ -1145,11 +1145,11 @@ test("chỉ chủ nhà cấp được link đặt lại", async () => {
 });
 
 test("đặt lại mật khẩu bằng link, xong thì mọi phiên bị hủy", async () => {
-  const staff = await findUser("nhanvien@hoangan.vn");
+  const staff = await findUser("nhanvien@example.com");
 
   // Phiên đang mở của người dùng, để kiểm tra nó bị đẩy ra sau khi đổi.
   const asStaff = withCookie(
-    await loginCookie("nhanvien@hoangan.vn", "matkhaumoi456", "203.0.113.61"),
+    await loginCookie("nhanvien@example.com", "matkhaumoi456", "203.0.113.61"),
   );
   assert.equal((await asStaff("/api/rooms")).status, 200);
 
@@ -1182,11 +1182,11 @@ test("đặt lại mật khẩu bằng link, xong thì mọi phiên bị hủy",
   assert.equal(done.headers.get("set-cookie"), null);
 
   assert.equal((await asStaff("/api/rooms")).status, 401, "phiên cũ phải bị hủy");
-  await loginCookie("nhanvien@hoangan.vn", "matkhausau789", "203.0.113.62");
+  await loginCookie("nhanvien@example.com", "matkhausau789", "203.0.113.62");
 });
 
 test("link chỉ dùng được một lần", async () => {
-  const staff = await findUser("nhanvien@hoangan.vn");
+  const staff = await findUser("nhanvien@example.com");
   const token = tokenFromPath((await (await json("/api/auth/reset-link", { userId: staff.id })).json()).path);
 
   const body = (password) =>
@@ -1210,11 +1210,11 @@ test("link chỉ dùng được một lần", async () => {
   assert.match((await again.json()).error, /đã dùng rồi|hết hạn/);
 
   // Mật khẩu vẫn là của lần đặt đầu tiên.
-  await loginCookie("nhanvien@hoangan.vn", "matkhaulan1x", "203.0.113.63");
+  await loginCookie("nhanvien@example.com", "matkhaulan1x", "203.0.113.63");
 });
 
 test("cấp link mới thì link cũ hết hiệu lực", async () => {
-  const staff = await findUser("nhanvien@hoangan.vn");
+  const staff = await findUser("nhanvien@example.com");
   const first = tokenFromPath((await (await json("/api/auth/reset-link", { userId: staff.id })).json()).path);
   const second = tokenFromPath((await (await json("/api/auth/reset-link", { userId: staff.id })).json()).path);
   assert.notEqual(first, second);
@@ -1229,7 +1229,7 @@ test("cấp link mới thì link cũ hết hiệu lực", async () => {
 });
 
 test("từ chối token bịa, mật khẩu quá ngắn và hai lần nhập lệch nhau", async () => {
-  const staff = await findUser("nhanvien@hoangan.vn");
+  const staff = await findUser("nhanvien@example.com");
   const token = tokenFromPath((await (await json("/api/auth/reset-link", { userId: staff.id })).json()).path);
 
   const fake = await anonymous("/api/auth/reset-password", {
@@ -1260,7 +1260,7 @@ test("từ chối token bịa, mật khẩu quá ngắn và hai lần nhập l�
 });
 
 test("không cấp link cho tài khoản đang bị khóa", async () => {
-  const staff = await findUser("nhanvien@hoangan.vn");
+  const staff = await findUser("nhanvien@example.com");
   assert.equal((await json("/api/users", { id: staff.id, isActive: false }, "PATCH")).status, 200);
 
   const blocked = await json("/api/auth/reset-link", { userId: staff.id });
@@ -1271,7 +1271,7 @@ test("không cấp link cho tài khoản đang bị khóa", async () => {
 });
 
 test("trang đặt lại mật khẩu mở cho người chưa đăng nhập", async () => {
-  const staff = await findUser("nhanvien@hoangan.vn");
+  const staff = await findUser("nhanvien@example.com");
   const token = tokenFromPath((await (await json("/api/auth/reset-link", { userId: staff.id })).json()).path);
 
   const good = await anonymous(`/dat-lai-mat-khau?token=${encodeURIComponent(token)}`);

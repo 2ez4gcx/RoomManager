@@ -70,7 +70,7 @@ Kiểm tra cấu hình đã nhận đúng:
 npx wrangler deploy --dry-run
 ```
 
-Dòng cuối phải hiện `env.DB (room-manager)`. Nếu vẫn thấy `site-creator-d1` thì
+Dòng cuối phải hiện `env.DB (room-manager)`. Nếu vẫn thấy `room-manager-local` thì
 biến môi trường chưa tới được lệnh build.
 
 > Chạy `npm run build` mà **không** đặt biến sẽ quay lại D1 giả. Luôn đặt biến
@@ -103,7 +103,7 @@ mẫu cố ý bị khóa ngoài môi trường phát triển vì nó xóa sạch
 khoản đầu tiên phải tạo trực tiếp:
 
 ```bash
-npm run create-owner -- "chunha@nhatro.vn" "Trần Văn A" "mat khau that cua ban" "0901234567"
+npm run create-owner -- "chunha@example.com" "Trần Văn A" "mat khau that cua ban" "0901234567"
 ```
 
 Script ghi câu lệnh SQL vào file `tao-chu-nha.sql` và in ra lệnh
@@ -112,7 +112,7 @@ Script ghi câu lệnh SQL vào file `tao-chu-nha.sql` và in ra lệnh
 
 Dữ liệu mẫu không bao giờ được nạp lên đây. `npm run db:setup` và
 `reset-data.bat` chỉ chạy được với server dev ở máy, và tài khoản mẫu
-`quanly@hoangan.vn` chỉ tồn tại trong cơ sở dữ liệu mẫu đó.
+`quanly@example.com` chỉ tồn tại trong cơ sở dữ liệu mẫu đó.
 
 Sau khi đăng nhập lần đầu:
 
@@ -213,7 +213,7 @@ lúc build vì cùng lý do.
 
 ### Ba điều phải biết về bản demo
 
-1. **Ai có địa chỉ là vào được.** Tài khoản `quanly@hoangan.vn` /
+1. **Ai có địa chỉ là vào được.** Tài khoản `quanly@example.com` /
    `roommanager` có mật khẩu nằm công khai trong mã nguồn. Đó là chủ ý — khách
    cần đăng nhập để xem — nhưng nghĩa là địa chỉ demo coi như công khai.
 2. **Tuyệt đối không nhập số liệu thật vào bản demo**, kể cả để "thử cho giống

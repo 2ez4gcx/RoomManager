@@ -15,7 +15,7 @@ Có hai kiểu, khác nhau ở chỗ dữ liệu nằm đâu:
 |---|---|---|
 | Mở được từ đâu | Máy đó, và điện thoại trong cùng wifi | Bất kỳ đâu có mạng |
 | Dữ liệu nằm ở | Ổ cứng máy đó | Máy chủ Cloudflare |
-| Sao lưu | Bạn tự lo | Tự động, khôi phục được 30 ngày |
+| Sao lưu | Bạn tự lo | Tự động, khôi phục được 7 ngày (gói Free) |
 | Máy tắt thì | Không ai vào được | Vẫn chạy |
 | Chi phí | 0đ | 0đ với quy mô dưới ~100 phòng |
 | Cần gì | Máy tính Windows | Thêm một tài khoản Cloudflare |
@@ -71,7 +71,7 @@ thu bịa sẵn để bạn bấm thử. Tài khoản xem thử:
 
 | Đăng nhập | Mật khẩu |
 |---|---|
-| `quanly@hoangan.vn` | `roommanager` |
+| `quanly@example.com` | `roommanager` |
 
 Cứ bấm thử thoải mái, có làm hỏng gì cũng không sao — đây là dữ liệu giả.
 

@@ -1,234 +1,118 @@
 # RoomManager
 
-Webapp quản lý nhà trọ: tình trạng phòng, khách thuê, hợp đồng, đơn thu, phụ thu, công nợ, thu chi và yêu cầu đặt phòng online.
+[![CI](https://github.com/2ez4gcx/RoomManager/actions/workflows/ci.yml/badge.svg)](https://github.com/2ez4gcx/RoomManager/actions/workflows/ci.yml)
+[![Giấy phép: MIT](https://img.shields.io/badge/gi%E1%BA%A5y%20ph%C3%A9p-MIT-green.svg)](LICENSE)
+![Node.js](https://img.shields.io/badge/node-%E2%89%A5%2022.18-339933.svg)
 
-## Trạng thái hiện tại
+Phần mềm quản lý nhà trọ mã nguồn mở: phòng, khách thuê, hợp đồng, đơn thu điện nước, công nợ, sổ thu chi và trang đặt phòng online. Chạy miễn phí trên một máy tính Windows hoặc trên Cloudflare Workers.
 
-Toàn bộ giao diện đã chạy trên dữ liệu thật, có đăng nhập.
+*Open-source rental-room management for small Vietnamese landlords. The interface and documentation are in Vietnamese.*
 
-- **Đăng nhập** bằng email hoặc tên đăng nhập + mật khẩu (PBKDF2, phiên lưu cookie `HttpOnly`), có giới hạn số lần nhập sai và xác thực hai bước TOTP tùy chọn. Mọi trang và API quản trị đều bị khóa; chỉ `/booking` và `/login` là công khai.
-- **Nhà & phòng** — thêm nhà mới, thêm loại phòng, thêm phòng. Trạng thái phòng được **suy ra** từ hợp đồng, giữ chỗ và bảo trì, không lưu cờ riêng.
-- **Khách thuê** — tạo hồ sơ và hợp đồng cùng lúc, theo dõi công nợ và hạn hợp đồng, **trả phòng** với tất toán tiền cọc.
-- **Đặt phòng** — bảng kanban 4 trạng thái, xác nhận là giữ chỗ có hạn.
-- **Lập đơn thu** — chốt sổ cuối kỳ: nhập chỉ số điện từng phòng, xem tiền tính lại ngay, rồi phát hành đơn cho tất cả phòng đang thuê trong một lượt.
-- **Đơn thu** — xem chi tiết từng dòng (tiền phòng, điện, nước, dịch vụ), ghi nhận thanh toán một phần hoặc toàn phần, **hủy đơn lập nhầm** rồi lập lại, lọc theo kỳ.
-- **Thu chi** — sổ thu chi, biểu đồ 6 tháng, cơ cấu chi; thanh toán tự sinh dòng thu.
-- **Nhắc nợ** — cron chạy 8 giờ sáng mỗi ngày, tự rà ai sắp đến hạn/đến hạn/quá hạn và soạn sẵn tin nhắn; chủ nhà gửi qua Zalo hoặc gọi điện rồi đánh dấu.
-- **Xuất Excel** — danh sách khách thuê, đơn thu theo kỳ, sổ thu chi kèm cơ cấu chi. File `.xlsx` thật, mở thẳng bằng Excel; cột tiền là số nên cộng được ngay.
-- **Cài đặt** — bảng giá điện/nước/dịch vụ, chu kỳ thu, thời gian giữ phòng, đổi mật khẩu, bật/tắt xác thực hai bước.
-- **Tài khoản** (chỉ chủ nhà) — tạo tài khoản nhân viên, đổi vai trò, khóa/mở khóa, đặt lại mật khẩu, cấp link quên mật khẩu.
-- **Trang công khai** `/booking` — hiện phòng còn trống theo thời gian thực, khách gửi yêu cầu xem phòng.
+> [!WARNING]
+> **Bản thử nghiệm (0.1.0).** Phần mềm có bộ kiểm thử tự động nhưng chưa được dùng lâu dài với một nhà trọ thật. Hãy chạy thử bằng dữ liệu mẫu trước, và đối chiếu song song với sổ sách cũ ít nhất một kỳ thu trước khi tin vào con số. Xem [Trách nhiệm khi sử dụng](#trách-nhiệm-khi-sử-dụng).
 
-Các ràng buộc nghiệp vụ đang được kiểm thử tự động: không hai hợp đồng trên một phòng, không hai người giữ cùng một phòng, không cho thuê phòng bảo trì, không thu vượt số còn nợ, không lập trùng đơn cho cùng phòng và kỳ, hủy đơn không làm mất mốc chỉ số điện, chỉ số điện không lùi, ký hợp đồng thì giải phóng chỗ giữ, và hệ thống luôn còn ít nhất một chủ nhà đăng nhập được.
+![Màn hình tổng quan](docs/images/tong-quan.jpg)
 
-**Phân quyền:** nhân viên xem và nhập được dữ liệu vận hành (phòng, khách thuê, đơn thu, thu chi, đặt phòng) nhưng không thêm nhà, không sửa bảng giá và không quản lý tài khoản.
+| Nhà & phòng | Đơn thu | Trang đặt phòng công khai |
+|---|---|---|
+| ![Nhà và phòng](docs/images/nha-phong.jpg) | ![Đơn thu](docs/images/don-thu.jpg) | ![Trang đặt phòng](docs/images/dat-phong.jpg) |
 
-**Chưa làm:**
+## Tính năng
 
-- Hệ thống soạn sẵn tin nhắc nợ nhưng **chưa tự gửi** cho khách: Zalo OA phải duyệt hồ sơ, SMS và email đều cần tài khoản dịch vụ trả phí.
-- Chưa chốt nền tảng lâu dài: đang chạy Cloudflare D1, phương án VPS/PostgreSQL vẫn để ngỏ.
-- Tên miền và môi trường chạy thật do người triển khai tự cấu hình. Hướng dẫn đưa lên Cloudflare có ở [docs/DEPLOY-CLOUDFLARE.md](docs/DEPLOY-CLOUDFLARE.md).
+- **Nhà & phòng** — nhiều nhà trong một hệ thống; trạng thái phòng (đang thuê, trống, đã giữ, bảo trì) được suy ra từ hợp đồng và giữ chỗ, không phải tự đánh dấu.
+- **Khách thuê & hợp đồng** — tạo hồ sơ và hợp đồng cùng lúc, sửa giá thuê và thời hạn, theo dõi công nợ, trả phòng kèm chốt tháng cuối và tất toán tiền cọc.
+- **Lập đơn thu theo kỳ** — nhập chỉ số điện từng phòng, xem tiền tính lại ngay, phát hành đơn cho mọi phòng trong một lượt. Tiền phòng tự chia theo ngày cho khách vào hoặc ra giữa tháng.
+- **Thu tiền & công nợ** — ghi nhận thanh toán một phần hoặc toàn phần, hủy đơn lập nhầm rồi lập lại, lọc theo kỳ.
+- **Sổ thu chi** — thu chi vận hành tách khỏi tiền cọc, biểu đồ 6 tháng, cơ cấu chi.
+- **Nhắc nợ** — mỗi sáng tự rà đơn sắp đến hạn, đến hạn, quá hạn và soạn sẵn tin nhắn để gửi qua Zalo hoặc gọi điện.
+- **Xuất Excel** — danh sách khách thuê, đơn thu theo kỳ, sổ thu chi; cột tiền và cột ngày là số và ngày thật.
+- **Trang đặt phòng công khai** — hiện phòng còn trống, khách gửi yêu cầu xem phòng; chủ nhà duyệt trên bảng kanban.
+- **Tài khoản & phân quyền** — chủ nhà và nhân viên; nhân viên vận hành hằng ngày nhưng không hủy đơn, không đổi giá, không quản lý tài khoản.
+- **Bảo mật** — mật khẩu băm PBKDF2, phiên lưu cookie `HttpOnly`, giới hạn số lần nhập sai, xác thực hai bước (TOTP) kèm mã khôi phục, nhật ký thao tác.
 
-## Chạy tại máy
+## Xem thử
 
-Yêu cầu Node.js `>=22.18.0`.
+Cần [Node.js](https://nodejs.org) 22.18 trở lên.
 
-Có hai kiểu chạy, đừng trộn lẫn:
+**Windows:** tải mã nguồn về, nhấp đúp `start.bat`. File này tự cài thư viện, khởi động, nạp dữ liệu mẫu rồi mở trình duyệt.
 
-- **Xem thử** — nạp dữ liệu mẫu để bấm thử mọi màn hình. Tài khoản và mật khẩu nằm công khai trong mã nguồn.
-- **Dùng thật** — khởi tạo trống, tự tạo tài khoản của mình rồi nhập dữ liệu nhà trọ.
-
-### Xem thử (Windows)
-
-Nhấp đúp `start.bat`. File này tự kiểm tra Node.js, cài thư viện lần đầu, khởi động server, dựng bảng và nạp dữ liệu mẫu nếu cơ sở dữ liệu còn trống, rồi mở trình duyệt. Đóng cửa sổ đen để dừng server.
-
-Đăng nhập: `quanly@hoangan.vn` / `roommanager`.
-
-Đây là tài khoản của **dữ liệu mẫu**, mật khẩu nằm công khai trong `db/seed.ts` và bị xoá/tạo lại mỗi lần nạp lại mẫu. Không bao giờ để tài khoản này tồn tại trên cơ sở dữ liệu thật.
-
-Muốn xoá sạch và nạp lại dữ liệu mẫu: nhấp đúp `reset-data.bat` (gõ `xoa` để xác nhận).
-
-### Xem thử (thủ công)
+**Thủ công:**
 
 ```bash
 npm install
 npm run dev
-```
-
-Dựng bảng và nạp dữ liệu mẫu — 2 nhà, 40 phòng, 32 hợp đồng, 32 đơn thu:
-
-```bash
 npm run db:setup
 ```
 
-Xóa sạch và nạp lại từ đầu:
+Mở <http://localhost:3000> và đăng nhập bằng tài khoản mẫu `quanly@example.com` / `roommanager`. Dữ liệu mẫu gồm 2 nhà, 40 phòng, 32 hợp đồng và 32 đơn thu; mọi tên và số điện thoại trong đó đều là giả.
+
+> [!CAUTION]
+> Chế độ xem thử chỉ để xem thử. Tài khoản mẫu có mật khẩu công khai, và ở chế độ này ai vào được máy cũng xóa được dữ liệu. Đừng nhập dữ liệu thật vào đây.
+
+## Dùng với dữ liệu thật
+
+Có hai cách, khác nhau ở chỗ dữ liệu nằm đâu:
+
+| | Trên một máy tính | Trên Cloudflare |
+|---|---|---|
+| Truy cập từ | Máy đó và thiết bị cùng wifi | Bất kỳ đâu có mạng |
+| Dữ liệu nằm ở | Ổ cứng máy đó | Cloudflare D1 |
+| Sao lưu | Tự chép thư mục dữ liệu | Time Travel của D1 |
+| Chi phí | 0đ | 0đ với quy mô nhỏ (gói Free) |
+| Bắt đầu | `khoi-tao-that.bat` rồi `chay-server.bat` | [Hướng dẫn deploy](docs/DEPLOY-CLOUDFLARE.md) |
+
+- **Người không rành kỹ thuật:** làm theo [Hướng dẫn cài đặt](docs/HUONG-DAN-CAI-DAT.md), từng bước một.
+- **Người quen dòng lệnh:** xem [Vận hành](docs/VAN-HANH.md) — chạy server, khởi tạo, cập nhật, sao lưu, chạy sau proxy HTTPS, cứu mật khẩu.
+
+## Công nghệ
+
+- [React 19](https://react.dev) với [vinext](https://github.com/cloudflare/vinext) (App Router chạy trên Vite)
+- [Cloudflare Workers](https://developers.cloudflare.com/workers/) và [D1](https://developers.cloudflare.com/d1/) (SQLite); bản chạy trên máy dùng [Miniflare](https://miniflare.dev) với đúng runtime đó
+- [Drizzle ORM](https://orm.drizzle.team) và migration SQL trong `drizzle/`
+- TypeScript, ESLint, bộ kiểm thử chạy bằng `node:test`
+
+Không phụ thuộc dịch vụ trả phí nào. File Excel, mã QR và TOTP được viết trong mã nguồn, không dùng thư viện ngoài lúc chạy.
+
+## Phát triển
 
 ```bash
-npm run db:reset
-```
-
-### Chạy như một server (mở cho điện thoại trong cùng wifi)
-
-`npm run dev` **không được dùng làm server**: ở chế độ dev, `import.meta.env.DEV`
-là true nên nhóm route `/api/dev/` mở — mở ra mạng nội bộ nghĩa là ai trong cùng
-wifi cũng xoá sạch được cơ sở dữ liệu mà không cần đăng nhập.
-
-```bash
-npm run server:khoi-tao   # lần đầu: tạo cơ sở dữ liệu trống + tài khoản chủ nhà
-npm start                 # chạy server
-```
-
-Trên Windows thì nhấp đúp `chay-server.bat` (tự build rồi chạy).
-
-Chạy bản build production trên Miniflare 4 — đúng runtime của bộ kiểm thử
-— bind `0.0.0.0`, dữ liệu ở `.wrangler/state/server` tách khỏi cơ sở dữ liệu
-mẫu của `npm run dev`. Nhóm route `/api/dev/` bị khoá; chế độ `--khoi-tao` có
-mở nó nhưng khi ấy Miniflare không mở cổng mạng, mọi lời gọi đi qua
-`dispatchFetch` trong tiến trình.
-
-Xác nhận bằng:
-
-```bash
-npm run kiem-tra-deploy -- http://localhost:3000
-```
-
-Không cần cho máy khác truy cập thì chạy `node scripts/chay-server.mjs --chi-may-nay`: server chỉ nhận kết nối từ chính máy này, không mở ra mạng nội bộ.
-
-Muốn có HTTPS (ví dụ để truy cập từ ngoài nhà), đặt một reverse proxy có chứng chỉ — Caddy, nginx hoặc cloudflared — trên cùng máy, trỏ vào `http://127.0.0.1:3000`, rồi chạy `node scripts/chay-server.mjs --sau-proxy`. Ở chế độ này server chỉ nhận kết nối từ chính máy đó, tin các header `X-Forwarded-For`, `X-Forwarded-Proto`, `X-Forwarded-Host` của proxy, và cookie phiên mang cờ `Secure` khi proxy báo `https`. Đừng dùng `--sau-proxy` khi không có proxy đứng trước: các header đó khi ấy do người gọi tự đặt.
-
-Mạng nội bộ không có HTTPS nên mật khẩu đi qua wifi ở dạng chữ thường. Lệnh
-kiểm tra ghi rõ điều này nhưng không coi là lỗi chặn khi địa chỉ nằm trong dải
-IP riêng.
-
-### Dùng thật
-
-Bắt đầu bằng cơ sở dữ liệu **trống**, không có dữ liệu mẫu và không có tài khoản mẫu. Dữ liệu thật nằm ở `.wrangler/state/server`, tách hẳn khỏi cơ sở dữ liệu mẫu mà `start.bat` và `npm run dev` dùng.
-
-1. Nhấp đúp `khoi-tao-that.bat` (hoặc `npm run server:khoi-tao`). **Không cần** server đang chạy — nên tắt nó đi. File này tạo cơ sở dữ liệu trống, rồi hỏi email, họ tên và mật khẩu để tạo tài khoản chủ nhà đầu tiên.
-2. Nhấp đúp `chay-server.bat` để chạy hằng ngày.
-
-Chạy `khoi-tao-that.bat` lần thứ hai thì nó **dừng lại** nếu cơ sở dữ liệu đã có tài khoản, để không ai xóa nhầm số liệu thật. Muốn xóa hết làm lại từ đầu phải gõ rõ:
-
-```bash
-node scripts/chay-server.mjs --khoi-tao --xoa-du-lieu-cu
-```
-
-Lệnh đó sao lưu dữ liệu cũ sang thư mục bên cạnh (`.wrangler/state/server-sao-luu-...`) rồi mới xóa.
-
-Từ tài khoản thứ hai trở đi thì tạo ở trang **Tài khoản**. Sau khi đăng nhập lần đầu: bật **xác thực hai bước** và tạo thêm **một tài khoản chủ nhà thứ hai** để phòng khi quên mật khẩu.
-
-**Đừng** nhập dữ liệu thật vào bản chạy bằng `start.bat` hay `npm run dev`: ở đó nhóm route `/api/dev/` đang mở, và `reset-data.bat` / `npm run db:reset` xóa sạch rồi nạp lại dữ liệu mẫu. Hai lệnh đó không đụng tới `.wrangler/state/server`, nên với dữ liệu thật của chế độ server thì chúng vô hại.
-
-Trên Cloudflare thì khác — dùng `npm run create-owner`, xem [docs/DEPLOY-CLOUDFLARE.md](docs/DEPLOY-CLOUDFLARE.md). Đừng dùng lệnh `wrangler d1 execute --local` mà script đó in ra cho chế độ server ở máy: wrangler ghi vào một file SQLite khác với file server đang dùng, lệnh báo thành công nhưng tài khoản không xuất hiện.
-
-#### Cập nhật bản mới
-
-Tải mã nguồn mới về đè lên thư mục cũ (giữ nguyên `.wrangler/`), rồi chạy `chay-server.bat` như thường. Nếu bản mới có thay đổi cấu trúc dữ liệu, server tự sao lưu thư mục dữ liệu sang `.wrangler/state/server-sao-luu-...` rồi mới cập nhật, trước khi mở cổng.
-
-#### Sao lưu
-
-Thư mục cần sao lưu là `.wrangler/state/server`. Tắt server, chép nguyên thư mục đó sang ổ khác hoặc lên đám mây. Chạy trên máy local không có sao lưu tự động hằng ngày, không có HTTPS, và máy tắt là mất truy cập; dùng lâu dài thì cân nhắc đưa lên Cloudflare — xem [docs/DEPLOY-CLOUDFLARE.md](docs/DEPLOY-CLOUDFLARE.md).
-
-Nhóm route `/api/dev/` mặc định bị khóa ngoài môi trường dev. Bản build production chỉ mở khi có đủ hai thứ: biến `ALLOW_DEV_SETUP=true`, và biến `DEV_SETUP_TOKEN` (ít nhất 24 ký tự) khớp với header `x-dev-setup-token` của yêu cầu. `chay-server` tự sinh token cho các bước khởi tạo chạy trong tiến trình của nó. Đừng bao giờ đặt `ALLOW_DEV_SETUP` trên bản chạy thật; token chỉ là lớp chặn thứ hai cho trường hợp lỡ tay.
-
-## Kiểm tra
-
-```bash
-npm test
-```
-
-Chạy typecheck, build, rồi kiểm thử bản build trong Miniflare (workerd thật kèm D1 thật): hơn 150 bài, gồm xác thực, quyền truy cập, ràng buộc nghiệp vụ và kiểm tra trang công khai không lộ dữ liệu khách thuê.
-
-```bash
+npm test        # typecheck, build, rồi hơn 150 bài kiểm thử trên workerd + D1 thật
 npm run lint
 ```
 
-Mọi push và pull request vào `main` chạy lại đúng những lệnh này trên GitHub
-Actions, xem [.github/workflows/ci.yml](.github/workflows/ci.yml). Ngoài
-typecheck/build/lint/test, CI còn chặn hai thứ: cây phụ thuộc production có
-cảnh báo, và file cấu hình khai báo `ALLOW_DEV_SETUP` — biến mở đường xoá sạch
-cơ sở dữ liệu. Cây dev/build hiện còn 14 cảnh báo, được ghi ra nhưng không chặn
-vì không có đường chạm tới runtime.
-
-## Quên mật khẩu
-
-Hệ thống **không gửi email**: Cloudflare Workers không mở được kết nối TCP nên không dùng SMTP trực tiếp, và chưa cấu hình dịch vụ gửi mail nào.
-
-Người quên mật khẩu báo chủ nhà. Chủ nhà vào trang **Tài khoản**, bấm *Link quên mật khẩu* ở dòng của người đó, rồi gửi link qua Zalo hoặc đọc qua điện thoại. Link sống một giờ, dùng được một lần, và khi đặt lại xong mọi thiết bị đang đăng nhập tài khoản đó bị đăng xuất.
-
-Link không tự đăng nhập — đặt xong vẫn phải đăng nhập bình thường, nên tài khoản có bật xác thực hai bước vẫn bị hỏi mã.
-
-### Khi chủ nhà duy nhất quên mật khẩu
-
-Lúc đó không ai cấp được link, phải sửa thẳng cơ sở dữ liệu:
-
-Bản chạy trên máy (`chay-server.bat`): tắt server rồi chạy lệnh dưới, nó hỏi tên đăng nhập và mật khẩu mới, ghi thẳng vào đúng cơ sở dữ liệu server đang dùng và đăng xuất mọi thiết bị cũ.
-
-```bash
-node scripts/chay-server.mjs --dat-lai-mat-khau
-```
-
-Bản trên Cloudflare:
-
-```bash
-npm run hash-password "mat khau moi cua ban" "email-tai-khoan"
-```
-
-Script ghi câu lệnh SQL vào file `dat-lai-mat-khau.sql` rồi in ra lệnh `wrangler d1 execute --file` để chạy. Nó dùng chung module băm với máy chủ nên định dạng chắc chắn khớp — có bài kiểm thử đối chiếu giữa Node và workerd. Chạy xong thì xóa file đó, đăng nhập lại và đổi mật khẩu ở trang Cài đặt.
-
-Cách phòng tránh tốt hơn: **luôn có ít nhất hai tài khoản chủ nhà**, để người này cấp link cho người kia.
-
-## Đổi schema
-
-```bash
-npm run db:generate
-```
-
-Sinh migration mới vào `drizzle/`. Trên Cloudflare, áp lên D1 thật bằng `npm run deploy:migrate`; ở chế độ server trên máy, `chay-server` tự áp lúc khởi động (sao lưu trước); còn `npm run dev` thì `npm run db:setup` lo việc đó.
-
-## Cấu trúc
+Mọi push và pull request vào `main` chạy lại đúng các lệnh này trên GitHub Actions, kèm rà soát phụ thuộc và kiểm tra cấu hình nguy hiểm.
 
 | Thư mục | Vai trò |
 |---|---|
-| `app/` | Trang (server component) + client component tương ứng, API route trong `app/api/` |
-| `db/schema.ts` | 22 bảng Drizzle |
-| `db/queries.ts`, `db/queries-extra.ts` | Truy vấn đọc, gồm cả suy ra trạng thái phòng |
-| `db/mutations.ts`, `db/bookings.ts`, `db/finance.ts`, `db/settings.ts` | Thao tác ghi kèm kiểm tra dữ liệu |
-| `db/auth.ts` | Băm mật khẩu, đổi mật khẩu và quản lý phiên |
-| `db/login-throttle.ts` | Giới hạn số lần đăng nhập sai |
-| `db/users.ts` | Quản lý tài khoản và phân quyền |
-| `db/totp.ts`, `db/two-factor.ts`, `db/qr.ts` | Xác thực hai bước, mã khôi phục và mã QR |
-| `db/billing.ts` | Lập đơn thu theo kỳ, chia tiền theo ngày |
-| `db/move-out.ts` | Trả phòng và tất toán tiền cọc |
-| `db/invoice-cancel.ts` | Hủy đơn thu lập nhầm |
-| `db/reminders.ts` | Nhắc nợ: rà theo lịch và soạn tin |
-| `db/xlsx.ts`, `db/zip.ts` | Sinh file Excel, không dùng thư viện ngoài |
-| `db/password-reset.ts` | Link đặt lại mật khẩu dùng một lần |
-| `db/password-hash.ts` | Băm mật khẩu, dùng chung với script cứu hộ |
-| `proxy.ts` | Chặn điều hướng; xác thực thật nằm ở `requireUser()` và `requireApiUser()` |
+| `app/` | Trang, client component và API route (`app/api/`) |
+| `db/` | Schema Drizzle, truy vấn, nghiệp vụ (lập đơn, thu tiền, trả phòng, nhắc nợ) và xác thực |
+| `drizzle/` | Migration SQL |
+| `worker/` | Điểm vào của Worker và cron nhắc nợ |
+| `scripts/` | Chạy server trên máy, khởi tạo, kiểm tra sau deploy |
+| `tests/` | Kiểm thử tích hợp trên bản build |
+| `docs/` | Tài liệu |
+
+Muốn đóng góp, xem [CONTRIBUTING.md](CONTRIBUTING.md). Thay đổi qua từng phiên bản ghi ở [CHANGELOG.md](CHANGELOG.md).
 
 ## Tài liệu
 
-- [Hướng dẫn cài đặt cho khách hàng](docs/HUONG-DAN-CAI-DAT.md) — gửi kèm khi bàn giao, viết cho người không rành kỹ thuật
-- [Đóng gói và bàn giao](docs/BAN-GIAO.md) — cách tạo gói sạch, những gì không được lọt vào
-- [Định hướng sản phẩm](docs/PRODUCT-SCOPE.md)
-- [Mô hình dữ liệu](docs/DATA-MODEL.md)
-- [Đưa lên Cloudflare](docs/DEPLOY-CLOUDFLARE.md) — hướng dẫn cho nền tảng đang dùng
-- [Triển khai trên VPS](docs/DEPLOYMENT.md) — kế hoạch cho phương án PostgreSQL, chưa áp dụng
-- [Thông tin ảnh chia sẻ](docs/BRAND-ASSET.md)
+| Tài liệu | Dành cho |
+|---|---|
+| [Hướng dẫn cài đặt](docs/HUONG-DAN-CAI-DAT.md) | Người dùng tự cài, không cần biết lập trình |
+| [Vận hành](docs/VAN-HANH.md) | Người trông coi một bản đang chạy |
+| [Đưa lên Cloudflare](docs/DEPLOY-CLOUDFLARE.md) | Deploy lên Workers + D1 |
+| [Mô hình dữ liệu](docs/DATA-MODEL.md) | Người đọc và sửa mã |
+| [Định hướng sản phẩm](docs/PRODUCT-SCOPE.md) | Phạm vi và lý do thiết kế |
+| [Đóng gói và bàn giao](docs/BAN-GIAO.md) | Người cài hộ cho chủ trọ khác |
+| [Triển khai trên VPS](docs/DEPLOYMENT.md) | Phác thảo phương án PostgreSQL, chưa thực hiện |
 
-## Nguồn mã
+## Giới hạn hiện tại
 
-Repository: <https://github.com/2ez4gcx/RoomManager>.
-
-Tài khoản `quanly@hoangan.vn`/`roommanager` trong `db/seed.ts` là dữ liệu mẫu, được công khai có chủ đích: bộ kiểm thử tự động dựng trên nó. Nó chỉ mở được cơ sở dữ liệu mẫu của người tự chạy trên máy họ và không bao giờ được nạp vào cơ sở dữ liệu thật. Mọi tên, số điện thoại, địa chỉ trong dữ liệu mẫu đều là giả.
-
-Trước khi đưa lên môi trường thật:
-
-- Khởi tạo cơ sở dữ liệu thật bằng đường **trống** (xem mục "Dùng thật"), không chạy `db:setup`.
-- Kiểm tra tài khoản mẫu không đăng nhập được trên môi trường thật.
-- Không commit `.env` (đang nằm trong `.gitignore`).
-- Đảm bảo `ALLOW_DEV_SETUP` không được đặt trên môi trường thật — biến này mở route xóa sạch cơ sở dữ liệu.
+- **Chưa tự gửi tin nhắc nợ.** Hệ thống soạn sẵn nội dung; việc gửi qua Zalo, SMS hay email cần tài khoản dịch vụ riêng nên chưa tích hợp.
+- **Không gửi email.** Quên mật khẩu được xử lý bằng link do chủ nhà cấp.
+- **Một tổ chức mỗi bản cài.** Nhiều nhà thì được, nhiều chủ trọ độc lập thì mỗi người một bản.
+- **Bản chạy trên máy không có HTTPS** trừ khi đặt sau một reverse proxy.
+- **Đường deploy lên Cloudflare** đã được kiểm ở máy với Miniflare nhưng chưa được tác giả chạy trên một tài khoản Cloudflare thật.
 
 ## Trách nhiệm khi sử dụng
 
@@ -238,12 +122,14 @@ Phần mềm được chia sẻ nguyên trạng, **không kèm bảo hành nào*
 - **Đây là sổ theo dõi, không phải phần mềm kế toán**, không xuất hóa đơn điện tử, không khai thuế, không đăng ký tạm trú. Phần mềm không đụng tới tiền thật: nó chỉ ghi lại con số bạn nhập.
 - **Luôn đối chiếu con số** với sổ sách của bạn, nhất là tiền điện nước và tiền cọc. Tác giả không chịu trách nhiệm về mất dữ liệu hay số liệu sai.
 - **Chế độ mạng nội bộ không có HTTPS**: mật khẩu đi qua wifi ở dạng chữ thường. Chỉ dùng trong mạng bạn tin tưởng.
-- Tài khoản mẫu `quanly@hoangan.vn` / `roommanager` có mật khẩu công khai. Không bao giờ để nó tồn tại trên bản chạy với dữ liệu thật.
+- Tài khoản mẫu `quanly@example.com` / `roommanager` có mật khẩu công khai. Không bao giờ để nó tồn tại trên bản chạy với dữ liệu thật.
 
-## Báo lỗi bảo mật
+## Đóng góp và báo lỗi
 
-Xem [SECURITY.md](SECURITY.md).
+- Lỗi và đề xuất: mở [issue](https://github.com/2ez4gcx/RoomManager/issues).
+- Lỗ hổng bảo mật: **đừng mở issue công khai**, xem [SECURITY.md](SECURITY.md).
+- Sửa mã: xem [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Giấy phép
 
-[MIT](LICENSE).
+[MIT](LICENSE). Dùng, sửa và phân phối lại tự do, không kèm bảo hành.

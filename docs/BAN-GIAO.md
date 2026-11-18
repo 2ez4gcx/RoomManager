@@ -57,7 +57,7 @@ Phải in ra `Gói sạch`.
 
 ## Về tài khoản dữ liệu mẫu trong gói
 
-Gói có kèm tài khoản `quanly@hoangan.vn` / `roommanager`, mật khẩu nằm công khai
+Gói có kèm tài khoản `quanly@example.com` / `roommanager`, mật khẩu nằm công khai
 trong `db/seed.ts`. Cố ý để vậy: khách cần một đường vào để xem thử ngay, và tài
 khoản này chỉ tồn tại trong cơ sở dữ liệu mẫu trên máy họ.
 

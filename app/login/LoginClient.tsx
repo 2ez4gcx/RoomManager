@@ -73,7 +73,7 @@ export function LoginClient() {
           <label>
             Email hoặc tên đăng nhập
             {/* Cố ý không dùng type="email": tài khoản có thể là tên đăng nhập ngắn. */}
-            <input name="email" type="text" required autoComplete="username" placeholder="email@nhatro.vn" />
+            <input name="email" type="text" required autoComplete="username" placeholder="email@example.com" />
           </label>
           <label>
             Mật khẩu

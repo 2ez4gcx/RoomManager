@@ -1,8 +1,28 @@
 {
   "name": "room-manager",
   "version": "0.1.0",
+  "description": "Phần mềm quản lý nhà trọ: phòng, khách thuê, hợp đồng, đơn thu điện nước, công nợ, thu chi và đặt phòng online. Chạy trên máy cá nhân hoặc Cloudflare Workers + D1.",
   "private": true,
   "license": "MIT",
+  "author": "2ez4gcx",
+  "homepage": "https://github.com/2ez4gcx/RoomManager#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/2ez4gcx/RoomManager.git"
+  },
+  "bugs": {
+    "url": "https://github.com/2ez4gcx/RoomManager/issues"
+  },
+  "keywords": [
+    "nha-tro",
+    "quan-ly-nha-tro",
+    "rental-management",
+    "property-management",
+    "cloudflare-workers",
+    "cloudflare-d1",
+    "drizzle-orm",
+    "react"
+  ],
   "engines": {
     "node": ">=22.18.0"
   },

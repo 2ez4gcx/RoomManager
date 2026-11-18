@@ -131,7 +131,7 @@ async function kiemTraTaiKhoanMau() {
   const { ok, res, loi } = await goi("/api/auth/login", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ email: "quanly@hoangan.vn", password: "roommanager" }),
+    body: JSON.stringify({ email: "quanly@example.com", password: "roommanager" }),
   });
   if (!ok) {
     ghi("Tài khoản mẫu không đăng nhập được", false, loi, false);
@@ -141,7 +141,7 @@ async function kiemTraTaiKhoanMau() {
     "Tài khoản mẫu không đăng nhập được",
     res.status !== 200,
     res.status === 200
-      ? "ĐĂNG NHẬP ĐƯỢC bằng quanly@hoangan.vn / roommanager — bản này đang chứa dữ liệu mẫu. Chỉ chấp nhận được nếu đây là bản demo."
+      ? "ĐĂNG NHẬP ĐƯỢC bằng quanly@example.com / roommanager — bản này đang chứa dữ liệu mẫu. Chỉ chấp nhận được nếu đây là bản demo."
       : `HTTP ${res.status}`,
   );
 }

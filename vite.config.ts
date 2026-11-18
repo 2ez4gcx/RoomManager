@@ -1,23 +1,15 @@
 import vinext from "vinext";
 import { defineConfig } from "vite";
-import hostingConfig from "./.openai/hosting.json";
-import { sites } from "./build/sites-vite-plugin";
 
-const SITE_CREATOR_PLACEHOLDER_DATABASE_ID =
-  "00000000-0000-4000-8000-000000000000";
+/** Mã D1 giả cho bản chạy ở máy; Miniflare không cần mã thật. */
+const LOCAL_DATABASE_ID = "00000000-0000-4000-8000-000000000000";
 
 // Khi deploy lên tài khoản Cloudflare của chính mình, đặt hai biến này để bản
 // build trỏ vào D1 thật. Không đặt thì giữ giá trị giả và `npm run dev` chạy
 // với D1 cục bộ của Miniflare như thường.
 // Xem docs/DEPLOY-CLOUDFLARE.md.
-const d1DatabaseName = process.env.CF_D1_DATABASE_NAME ?? "site-creator-d1";
-const d1DatabaseId =
-  process.env.CF_D1_DATABASE_ID ?? SITE_CREATOR_PLACEHOLDER_DATABASE_ID;
-
-const { d1, r2 } = hostingConfig;
-
-// macOS Seatbelt blocks FSEvents, so Codex previews need polling for HMR.
-const isCodexSeatbeltSandbox = process.env.CODEX_SANDBOX === "seatbelt";
+const d1DatabaseName = process.env.CF_D1_DATABASE_NAME ?? "room-manager-local";
+const d1DatabaseId = process.env.CF_D1_DATABASE_ID ?? LOCAL_DATABASE_ID;
 
 // Tên Worker. Bản demo PHẢI đặt tên khác bản thật (workflow deploy-demo đặt
 // `room-manager-demo`): cùng tên thì deploy demo ghi đè luôn Worker đang chạy
@@ -38,47 +30,33 @@ const localBindingConfig = {
   // Rà nhắc nợ mỗi ngày. 01:00 UTC là 08:00 giờ Việt Nam — đầu giờ làm việc,
   // để chủ nhà mở máy lên là đã có danh sách cần nhắc.
   triggers: { crons: ["0 1 * * *"] },
-  d1_databases: d1
-    ? [
-        {
-          binding: d1,
-          database_name: d1DatabaseName,
-          database_id: d1DatabaseId,
-          // Để `wrangler d1 migrations apply` tìm được SQL do drizzle sinh ra.
-          // Viết theo gốc dự án: plugin Cloudflare tự đổi sang đường dẫn tính
-          // từ dist/server/wrangler.json. Viết sẵn "../../drizzle" thì bị đổi
-          // thêm lần nữa và trỏ ra ngoài thư mục dự án.
-          migrations_dir: "drizzle",
-        },
-      ]
-    : [],
-  r2_buckets: r2
-    ? [
-        {
-          binding: r2,
-          bucket_name: "site-creator-r2",
-        },
-      ]
-    : [],
+  d1_databases: [
+    {
+      binding: "DB",
+      database_name: d1DatabaseName,
+      database_id: d1DatabaseId,
+      // Để `wrangler d1 migrations apply` tìm được SQL do drizzle sinh ra.
+      // Viết theo gốc dự án: plugin Cloudflare tự đổi sang đường dẫn tính từ
+      // dist/server/wrangler.json. Viết sẵn "../../drizzle" thì bị đổi thêm lần
+      // nữa và trỏ ra ngoài thư mục dự án.
+      migrations_dir: "drizzle",
+    },
+  ],
 };
 
 export default defineConfig(async () => {
-  // Keep Wrangler and Miniflare state project-local. These are non-secret tool
-  // settings; application environment belongs in ignored `.env*` files.
+  // Giữ log và trạng thái của Wrangler/Miniflare trong thư mục dự án.
   process.env.WRANGLER_WRITE_LOGS ??= "false";
   process.env.WRANGLER_LOG_PATH ??= ".wrangler/logs";
   process.env.MINIFLARE_REGISTRY_PATH ??= ".wrangler/registry";
 
-  // Wrangler snapshots its log path while the Cloudflare plugin is imported.
+  // Wrangler đọc đường dẫn log ngay lúc plugin Cloudflare được nạp, nên phải
+  // đặt biến môi trường ở trên trước khi import.
   const { cloudflare } = await import("@cloudflare/vite-plugin");
 
   return {
-    server: isCodexSeatbeltSandbox
-      ? { watch: { useFsEvents: false, usePolling: true } }
-      : undefined,
     plugins: [
       vinext(),
-      sites(),
       cloudflare({
         viteEnvironment: { name: "rsc", childEnvironments: ["ssr"] },
         config: localBindingConfig,

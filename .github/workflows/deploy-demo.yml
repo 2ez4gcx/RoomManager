@@ -92,7 +92,7 @@ jobs:
           # kết quả thì cũng dừng, thà không nạp còn hơn xóa nhầm.
           npx wrangler d1 execute "$TEN_D1" --remote --json \
             --config dist/server/wrangler.json \
-            --command "SELECT count(*) AS n FROM users WHERE email <> 'quanly@hoangan.vn'" \
+            --command "SELECT count(*) AS n FROM users WHERE email <> 'quanly@example.com'" \
             > kiem-tra-tai-khoan.json
           node -e '
             const kq = JSON.parse(require("fs").readFileSync("kiem-tra-tai-khoan.json", "utf8"));
@@ -132,7 +132,7 @@ jobs:
             echo ""
             echo "Địa chỉ: ${{ steps.dia_chi.outputs.url }}"
             echo ""
-            echo "Đăng nhập: \`quanly@hoangan.vn\` / \`roommanager\`"
+            echo "Đăng nhập: \`quanly@example.com\` / \`roommanager\`"
             echo ""
             echo "> Mật khẩu này nằm công khai trong mã nguồn. Ai có địa chỉ là"
             echo "> vào được. Chỉ dùng cho demo, tuyệt đối không nhập số liệu thật."

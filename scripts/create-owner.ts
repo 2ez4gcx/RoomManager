@@ -13,7 +13,7 @@
  * Dùng chung `db/password-hash.ts` với máy chủ nên định dạng băm chắc chắn
  * khớp; có bài kiểm thử đối chiếu giữa Node và workerd.
  *
- *   node scripts/create-owner.ts "email@nhatro.vn" "Họ Tên" "mật khẩu" [số điện thoại]
+ *   node scripts/create-owner.ts "email@example.com" "Họ Tên" "mật khẩu" [số điện thoại]
  */
 import { writeFile } from "node:fs/promises";
 import { hashPassword } from "../db/password-hash.ts";

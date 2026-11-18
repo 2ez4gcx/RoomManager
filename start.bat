@@ -68,7 +68,7 @@ rem --- Chay server o cua so nay -------------------------------------------
 echo  [3/3] Dang khoi dong server...
 echo.
 echo  DU LIEU MAU - khong phai so lieu that.
-echo  Dang nhap:  quanly@hoangan.vn / roommanager
+echo  Dang nhap:  quanly@example.com / roommanager
 echo.
 echo  Muon nhap so lieu that thi dung khoi-tao-that.bat roi chay-server.bat.
 echo  Dong cua so nay hoac nhan Ctrl+C de dung server.
