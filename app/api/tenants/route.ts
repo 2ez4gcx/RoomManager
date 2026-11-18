@@ -27,7 +27,7 @@ export async function POST(request: Request) {
       months: toNumber(body.months) ?? 12,
       rent: toNumber(body.rent),
       deposit: toNumber(body.deposit),
-      billingDay: toNumber(body.billingDay) ?? 5,
+      billingDay: toNumber(body.billingDay),
     });
 
     return Response.json(result, { status: 201 });

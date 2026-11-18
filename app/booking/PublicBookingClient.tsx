@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Modal } from "../components/AppShell";
-import { money } from "../lib/format";
+import { money, todayVietnam } from "../lib/format";
 import type { PublicProperty, PublicRoom } from "../../db/queries-extra";
 
 const ALL = "Tất cả vị trí";
@@ -264,7 +264,7 @@ function BookingModal({ room, onClose }: { room: PublicRoom | null; onClose: () 
             <div className="form-grid">
               <label>
                 Ngày muốn xem
-                <input name="preferredMoveIn" required type="date" defaultValue={new Date().toISOString().slice(0, 10)} />
+                <input name="preferredMoveIn" required type="date" defaultValue={todayVietnam()} />
               </label>
               <label>
                 Số người ở

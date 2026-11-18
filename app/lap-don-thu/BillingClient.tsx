@@ -4,7 +4,7 @@ import { Check, ChevronDown, CircleDollarSign, FileText, Zap } from "lucide-reac
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { AppShell, PageHeader, StatusBadge } from "../components/AppShell";
-import { formatDate, formatMillions, money } from "../lib/format";
+import { formatDate, formatMillions, money, recentPeriods } from "../lib/format";
 import type { SessionUser } from "../../db/auth";
 import type { BillingPreview } from "../../db/billing";
 
@@ -14,15 +14,6 @@ type Draft = { previousReading: string; currentReading: string; occupants: strin
 function periodLabel(period: string) {
   const [year, month] = period.split("-");
   return `Tháng ${month}/${year}`;
-}
-
-/** Sáu kỳ gần nhất tính từ tháng hiện tại. */
-function recentPeriods(count = 6) {
-  const now = new Date();
-  return Array.from({ length: count }, (_, index) => {
-    const date = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - index, 1));
-    return date.toISOString().slice(0, 7);
-  });
 }
 
 export function BillingClient({
@@ -124,6 +115,16 @@ export function BillingClient({
   }, [computed, drafts]);
 
   async function issue() {
+    // Phát hành xong là không sửa được ở đây nữa, và ô chỉ số để trống được
+    // tính 0 kWh. Hỏi lại một lần để không ai bấm nhầm khi mới nhập dở.
+    const warning =
+      totals.missingReading > 0
+        ? `Còn ${totals.missingReading} phòng chưa nhập chỉ số điện, sẽ được tính 0 kWh.\n\n`
+        : "";
+    if (!window.confirm(`${warning}Phát hành ${totals.count} đơn thu cho ${periodLabel(preview.period)}?`)) {
+      return;
+    }
+
     setError("");
     setBusy(true);
     try {

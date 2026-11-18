@@ -4,6 +4,7 @@ import {
   listReminders,
   markReminderSent,
 } from "../../../db/reminders";
+import { isRealDate } from "../../../db/internal";
 import { requireApiUser, toErrorResponse } from "../../lib/api";
 
 export async function GET(request: Request) {
@@ -34,6 +35,9 @@ export async function POST(request: Request) {
   try {
     await requireApiUser();
     const body = (await request.json().catch(() => ({}))) as { today?: string };
+    if (body.today !== undefined && !isRealDate(String(body.today))) {
+      return Response.json({ error: "Ngày không hợp lệ.", field: "today" }, { status: 400 });
+    }
     return Response.json(await generateReminders(body.today));
   } catch (error) {
     return toErrorResponse(error);

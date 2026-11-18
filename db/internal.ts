@@ -152,6 +152,15 @@ export async function withCodeRetry<T>(run: () => Promise<T>, attempts = 5): Pro
  */
 const MAX_BOUND_PARAMS = 90;
 
+export const PERIOD = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+/**
+ * Trần cho một khoản tiền nhập tay: 100 tỷ đồng. Không nhà trọ nào có một
+ * khoản thu chi lớn hơn thế; con số vượt trần gần như chắc chắn là gõ thừa số
+ * 0, và số quá lớn còn mất chính xác khi cộng (vượt 2^53).
+ */
+export const MAX_AMOUNT = 100_000_000_000;
+
 /** Chia dòng thành các lô vừa giới hạn tham số của D1, cho một bảng. */
 export function chunkRows<TRow>(table: SQLiteTable, rows: TRow[]): TRow[][] {
   const columns = Object.keys(getTableColumns(table)).length || 1;

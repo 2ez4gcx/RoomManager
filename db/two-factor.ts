@@ -5,7 +5,7 @@
  * Nếu bật ngay lúc sinh khóa, người quét hụt hoặc nhập nhầm sẽ tự khóa mình ra
  * khỏi hệ thống mà không có cách nào vào lại.
  */
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, eq, isNull, lt, or, sql } from "drizzle-orm";
 import { getDb } from "./index";
 import { newId } from "./ids";
 import { ValidationError, writeAudit } from "./internal";
@@ -232,12 +232,22 @@ export async function consumeSecondFactor(
   const db = getDb();
 
   const totp = await verifyTotp(secret, code, lastCounter);
-  if (totp.valid) {
-    await db
+  if (totp.valid && totp.counter !== null) {
+    const counter = totp.counter;
+    // Ghi mốc bằng một câu UPDATE có điều kiện rồi xem có dòng nào đổi không.
+    // Đọc mốc ra, so, rồi ghi đè vô điều kiện thì hai yêu cầu song song cùng
+    // mang một mã đều đọc mốc cũ và cùng lọt.
+    const claimed = await db
       .update(users)
-      .set({ totpLastCounter: totp.counter })
-      .where(eq(users.id, userId));
-    return true;
+      .set({ totpLastCounter: counter })
+      .where(
+        and(
+          eq(users.id, userId),
+          or(isNull(users.totpLastCounter), lt(users.totpLastCounter, counter)),
+        ),
+      )
+      .returning({ id: users.id });
+    return claimed.length > 0;
   }
 
   const hash = await hashCode(code);

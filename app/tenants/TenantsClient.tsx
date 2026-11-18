@@ -6,7 +6,7 @@ import {
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { AppShell, Modal, PageHeader, StatusBadge } from "../components/AppShell";
-import { formatDate, initials, money } from "../lib/format";
+import { formatDate, initials, money, todayVietnam } from "../lib/format";
 import type { SessionUser } from "../../db/auth";
 import type { RoomView, TenantView } from "../../db/queries";
 import type { MoveOutPreview, MoveOutResult } from "../../db/move-out";
@@ -406,7 +406,7 @@ function AddTenantModal({
             </label>
             <label>
               Ngày bắt đầu
-              <input name="startDate" type="date" required defaultValue={new Date().toISOString().slice(0, 10)} />
+              <input name="startDate" type="date" required defaultValue={todayVietnam()} />
             </label>
           </div>
           <label>
@@ -443,7 +443,7 @@ function MoveOutModal({
   const [deductions, setDeductions] = useState("");
   const [finalReading, setFinalReading] = useState("");
   const [issueFinal, setIssueFinal] = useState(true);
-  const [endDate, setEndDate] = useState(new Date().toISOString().slice(0, 10));
+  const [endDate, setEndDate] = useState(todayVietnam());
   const [result, setResult] = useState<MoveOutResult | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);

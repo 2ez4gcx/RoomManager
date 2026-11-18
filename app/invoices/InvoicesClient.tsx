@@ -7,7 +7,7 @@ import {
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { AppShell, Modal, PageHeader, StatusBadge } from "../components/AppShell";
-import { formatDate, formatMillions, money } from "../lib/format";
+import { formatDate, formatMillions, money, todayVietnam } from "../lib/format";
 import type { SessionUser } from "../../db/auth";
 import type { InvoiceSummary, InvoiceView } from "../../db/queries-extra";
 
@@ -259,23 +259,25 @@ function InvoiceModal({
     }
   }
 
+  // Đóng bằng cách nào cũng phải dọn biểu mẫu đang mở. Nút X trước đây gọi
+  // thẳng onClose, nên mở đơn kế tiếp là thấy sẵn biểu mẫu thu tiền/hủy của
+  // đơn trước.
+  function close() {
+    setPaying(false);
+    setCancelling(false);
+    setError("");
+    onClose();
+  }
+
   return (
-    <Modal
-      open={!!invoice}
-      onClose={() => {
-        setPaying(false);
-        setCancelling(false);
-        setError("");
-        onClose();
-      }}
-    >
+    <Modal open={!!invoice} onClose={close}>
       <div className="modal-heading">
         <div>
           <span className="modal-kicker">ĐƠN THU {invoice?.code}</span>
           <h2>{invoice?.roomCode} · {invoice ? periodLabel(invoice.period) : ""}</h2>
           <p>{invoice?.tenantName} · {invoice?.propertyName}</p>
         </div>
-        <button className="icon-button" onClick={onClose} aria-label="Đóng"><X size={20} /></button>
+        <button className="icon-button" onClick={close} aria-label="Đóng"><X size={20} /></button>
       </div>
 
       {invoice && (
@@ -343,7 +345,7 @@ function InvoiceModal({
                 </label>
                 <label>
                   Ngày thu
-                  <input name="paidAt" type="date" defaultValue={new Date().toISOString().slice(0, 10)} />
+                  <input name="paidAt" type="date" defaultValue={todayVietnam()} />
                 </label>
               </div>
               {error && <p className="form-error" role="alert">{error}</p>}

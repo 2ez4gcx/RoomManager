@@ -5,6 +5,7 @@
  */
 import { and, asc, desc, eq, gt, inArray, sql } from "drizzle-orm";
 import { getDb } from "./index";
+import { selectInChunks, todayInVietnam } from "./internal";
 import {
   bookingRequests,
   contracts,
@@ -141,7 +142,7 @@ const STATUS_LABELS: Record<InvoiceView["status"], string> = {
 
 export async function listInvoices(period?: string): Promise<InvoiceView[]> {
   const db = getDb();
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = todayInVietnam();
 
   const rows = await db
     .select({
@@ -165,7 +166,9 @@ export async function listInvoices(period?: string): Promise<InvoiceView[]> {
     .where(period ? eq(invoices.period, period) : undefined)
     .orderBy(desc(invoices.period), rooms.code);
 
-  const lines = await db
+  // Chỉ lấy dòng của các đơn đang hiện. Trước đây đọc dòng của MỌI đơn từng
+  // lập ở mỗi lần mở trang, càng dùng lâu càng chậm.
+  const lines = await selectInChunks(rows.map((row) => row.id), (chunk) => db
     .select({
       id: invoiceItems.id,
       invoiceId: invoiceItems.invoiceId,
@@ -178,7 +181,9 @@ export async function listInvoices(period?: string): Promise<InvoiceView[]> {
       sortOrder: invoiceItems.sortOrder,
     })
     .from(invoiceItems)
-    .orderBy(invoiceItems.invoiceId, asc(invoiceItems.sortOrder));
+    .where(inArray(invoiceItems.invoiceId, chunk))
+    .orderBy(invoiceItems.invoiceId, asc(invoiceItems.sortOrder)),
+  );
 
   const byInvoice = new Map<string, InvoiceLine[]>();
   for (const line of lines) {
@@ -226,7 +231,7 @@ export type InvoiceSummary = {
 
 export async function invoiceSummary(period: string): Promise<InvoiceSummary> {
   const db = getDb();
-  const todayIso = new Date().toISOString().slice(0, 10);
+  const todayIso = todayInVietnam();
 
   const [totals] = await db
     .select({
@@ -413,7 +418,8 @@ export async function listPublicVacantRooms(): Promise<PublicRoom[]> {
       contracts,
       and(eq(contracts.roomId, rooms.id), eq(contracts.status, "active")),
     )
-    .where(eq(rooms.condition, "usable"))
+    // Nhà đã ngừng hoạt động thì không chào phòng ra trang công khai nữa.
+    .where(and(eq(rooms.condition, "usable"), eq(properties.isActive, true)))
     .orderBy(properties.sortOrder, rooms.code);
 
   return rows

@@ -9,7 +9,8 @@ export async function POST(request: Request) {
     const result = await recordPayment({
       invoiceId: String(body.invoiceId ?? ""),
       amount: toNumber(body.amount) ?? 0,
-      method: (body.method as "cash" | "transfer" | "card" | "other") ?? "transfer",
+      // Kiểm tra giá trị nằm ở recordPayment; ở đây chỉ chuyển tiếp.
+      method: body.method ? (String(body.method) as "cash") : undefined,
       paidAt: body.paidAt ? String(body.paidAt) : undefined,
       note: body.note ? String(body.note) : undefined,
       actorId: user.id,

@@ -478,6 +478,12 @@ export async function issueInvoices(input: IssueInput): Promise<IssueResult> {
         "currentReading",
       );
     }
+    if (currentReading > 99_999_999) {
+      throw new ValidationError(
+        `Chỉ số điện của ${row.roomCode} quá lớn. Kiểm tra lại có gõ thừa số không.`,
+        "currentReading",
+      );
+    }
     if (!row.hasPreviousReading && entry.previousReading == null && currentReading > 0) {
       throw new ValidationError(
         `Phòng ${row.roomCode} chưa có chỉ số điện nào. Nhập chỉ số đầu (số trên công tơ lúc khách vào ở) để không tính tiền điện từ 0.`,

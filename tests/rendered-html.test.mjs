@@ -2407,6 +2407,97 @@ test("xuất đơn thu tách đúng từng khoản tiền", async () => {
   assert.equal(row[6] + row[7] + row[8] + row[9], row[10]);
 });
 
+/* ------------------------------------------------------------------ */
+/* Kiểm đầu vào, header bảo vệ, xuất sổ thu chi                       */
+/* ------------------------------------------------------------------ */
+
+test("ngày và số tiền nhập sai bị từ chối, không lặng lẽ thay bằng giá trị khác", async () => {
+  const ledger = (extra) =>
+    json("/api/ledger", { direction: "out", category: "Bảo trì", amount: 1000, ...extra });
+
+  // Ngày sai trước đây bị thay bằng hôm nay: khoản chi rơi nhầm sang kỳ khác.
+  assert.equal((await ledger({ occurredAt: "2026-13-45" })).status, 400);
+  assert.equal((await ledger({ occurredAt: "hom-qua" })).status, 400);
+  assert.equal((await ledger({ amount: 200_000_000_000 })).status, 400, "số tiền vượt trần");
+  assert.equal((await ledger({ occurredAt: "2026-01-15" })).status, 201);
+
+  const { invoices } = await (await authed("/api/invoices")).json();
+  const unpaid = invoices.find((invoice) => invoice.outstanding > 1000 && invoice.status !== "cancelled");
+  assert.ok(unpaid, "cần một đơn còn nợ");
+  const pay = (extra) => json("/api/payments", { invoiceId: unpaid.id, amount: 1000, ...extra });
+  assert.equal((await pay({ paidAt: "2026-02-30" })).status, 400);
+  assert.equal((await pay({ method: "bitcoin" })).status, 400);
+
+  assert.equal((await json("/api/reminders", { today: "khong-phai-ngay" })).status, 400);
+  assert.equal((await authed("/api/export/cashflow?period=2026-13")).status, 400);
+  assert.equal((await authed("/api/export/invoices?period=abc")).status, 400);
+});
+
+test("không lưu được đơn giá để trống", async () => {
+  const before = (await (await authed("/api/settings")).json()).settings["rate.electricity"];
+  const response = await json("/api/settings", { "rate.electricity": "" }, "PUT");
+  assert.equal(response.status, 400, "đơn giá điện trống bị lưu thành 0");
+  const after = (await (await authed("/api/settings")).json()).settings["rate.electricity"];
+  assert.equal(after, before);
+});
+
+test("mọi trang đều cấm nhúng vào khung, trang đặt lại mật khẩu không gửi Referer", async () => {
+  for (const pathname of ["/login", "/booking", "/"]) {
+    const response = pathname === "/" ? await authed(pathname) : await anonymous(pathname);
+    assert.equal(response.headers.get("x-frame-options"), "DENY", pathname);
+    assert.equal(response.headers.get("x-content-type-options"), "nosniff", pathname);
+    assert.match(response.headers.get("content-security-policy") ?? "", /frame-ancestors 'none'/, pathname);
+    assert.equal(response.headers.get("referrer-policy"), "same-origin", pathname);
+  }
+
+  const reset = await anonymous("/dat-lai-mat-khau?token=abc");
+  assert.equal(reset.headers.get("referrer-policy"), "no-referrer");
+
+  // `/bookings` là trang quản trị: chưa đăng nhập thì phải bị đưa về /login
+  // ngay ở tầng điều hướng, không được coi là "/booking" công khai.
+  const admin = await anonymous("/bookings");
+  assert.equal(admin.status, 307);
+});
+
+test("xuất sổ thu chi lấy đủ giao dịch của kỳ, kể cả kỳ cũ có hơn 1.000 dòng mới hơn", async () => {
+  // Một giao dịch ở kỳ rất cũ, rồi hơn 1.000 giao dịch mới hơn chèn thẳng vào
+  // cơ sở dữ liệu. Cách cũ lấy 1.000 dòng mới nhất rồi lọc, nên kỳ cũ ra rỗng.
+  const old = await json("/api/ledger", {
+    direction: "out",
+    category: "Bảo trì",
+    description: "Giao dịch kỳ cũ",
+    amount: 123000,
+    occurredAt: "2020-03-10",
+  });
+  assert.equal(old.status, 201);
+
+  const db = await mf.getD1Database("DB");
+  const statements = [];
+  for (let index = 0; index < 1010; index += 1) {
+    statements.push(
+      db
+        .prepare(
+          "INSERT INTO ledger_entries (id, code, direction, category, description, amount, occurred_at) VALUES (?, ?, 'out', 'Thử tải', '', 1, '2021-06-15')",
+        )
+        .bind(`led_bulk_${index}`, `GD-BULK${index}`),
+    );
+  }
+  for (let index = 0; index < statements.length; index += 50) {
+    await db.batch(statements.slice(index, index + 50));
+  }
+
+  try {
+    const workbook = await downloadWorkbook("/api/export/cashflow?period=2020-03");
+    const rows = sheetRows(workbook);
+    assert.ok(
+      rows.some((row) => row.includes("Giao dịch kỳ cũ")),
+      "giao dịch của kỳ cũ bị rơi khỏi file xuất",
+    );
+  } finally {
+    await db.prepare("DELETE FROM ledger_entries WHERE id LIKE 'led_bulk_%'").run();
+  }
+});
+
 test("xuất thu chi có sheet cơ cấu chi và dòng tổng", async () => {
   const period = new Date().toISOString().slice(0, 7);
   const workbook = await downloadWorkbook(`/api/export/cashflow?period=${period}`);

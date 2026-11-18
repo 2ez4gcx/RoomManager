@@ -436,3 +436,28 @@ export async function listLedgerEntries(limit = 30): Promise<LedgerView[]> {
     .orderBy(desc(ledgerEntries.occurredAt), desc(ledgerEntries.code))
     .limit(limit);
 }
+
+/**
+ * Toàn bộ giao dịch của một kỳ `YYYY-MM`, không giới hạn số dòng.
+ *
+ * Dùng cho file xuất. Lấy "1.000 dòng mới nhất rồi lọc theo kỳ" thì kỳ cũ bị
+ * thiếu dòng trong khi dòng tổng vẫn tính đủ từ SQL — file không tự cộng khớp.
+ */
+export async function listLedgerEntriesForPeriod(period: string): Promise<LedgerView[]> {
+  const db = getDb();
+  return db
+    .select({
+      id: ledgerEntries.id,
+      code: ledgerEntries.code,
+      direction: ledgerEntries.direction,
+      category: ledgerEntries.category,
+      description: ledgerEntries.description,
+      amount: ledgerEntries.amount,
+      occurredAt: ledgerEntries.occurredAt,
+      propertyName: properties.name,
+    })
+    .from(ledgerEntries)
+    .leftJoin(properties, eq(properties.id, ledgerEntries.propertyId))
+    .where(sql`substr(${ledgerEntries.occurredAt}, 1, 7) = ${period}`)
+    .orderBy(desc(ledgerEntries.occurredAt), desc(ledgerEntries.code));
+}

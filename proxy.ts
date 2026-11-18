@@ -16,7 +16,8 @@ const PUBLIC_PREFIXES = [
   // Người quên mật khẩu chưa đăng nhập được nên trang này phải mở. Quyền nằm
   // ở token trong link: khó đoán, hết hạn sau một giờ, dùng một lần.
   "/dat-lai-mat-khau",
-  "/booking",
+  // `/booking` (trang công khai) được xét riêng trong isPublic. Để nó ở đây thì
+  // phép so tiền tố nhận luôn `/bookings` là công khai.
   "/api/auth/",
   // Nhận yêu cầu từ biểu mẫu công khai; route chỉ ghi, không đọc dữ liệu riêng tư.
   "/api/booking-requests",
@@ -72,6 +73,26 @@ function isCrossOriginWrite(request: NextRequest) {
   }
 }
 
+/**
+ * Header bảo vệ gắn vào mọi phản hồi đi qua đây.
+ *
+ * - Cấm nhúng ứng dụng vào khung của trang khác, chặn kiểu lừa bấm
+ *   (clickjacking) lên các nút thu tiền, hủy đơn.
+ * - Cấm trình duyệt đoán kiểu nội dung.
+ * - Không gửi địa chỉ trang đi nơi khác. Trang đặt lại mật khẩu mang token
+ *   ngay trên URL nên tuyệt đối không gửi Referer.
+ */
+function withSecurityHeaders(response: NextResponse, pathname: string) {
+  response.headers.set("X-Frame-Options", "DENY");
+  response.headers.set("Content-Security-Policy", "frame-ancestors 'none'");
+  response.headers.set("X-Content-Type-Options", "nosniff");
+  response.headers.set(
+    "Referrer-Policy",
+    pathname.startsWith("/dat-lai-mat-khau") ? "no-referrer" : "same-origin",
+  );
+  return response;
+}
+
 export default function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -82,15 +103,16 @@ export default function proxy(request: NextRequest) {
     );
   }
 
-  if (isPublic(pathname)) return NextResponse.next();
-  if (request.cookies.get(SESSION_COOKIE)) return NextResponse.next();
+  if (isPublic(pathname) || request.cookies.get(SESSION_COOKIE)) {
+    return withSecurityHeaders(NextResponse.next(), pathname);
+  }
 
   if (pathname.startsWith("/api/")) {
     return NextResponse.json({ error: "Chưa đăng nhập." }, { status: 401 });
   }
 
   const loginUrl = new URL("/login", request.url);
-  return NextResponse.redirect(loginUrl);
+  return withSecurityHeaders(NextResponse.redirect(loginUrl), pathname);
 }
 
 export const config = {

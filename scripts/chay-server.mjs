@@ -21,6 +21,8 @@
  *                                                đặt lại mật khẩu một tài khoản khi
  *                                                không còn ai đăng nhập được
  *   node scripts/chay-server.mjs --cong 8080     đổi cổng
+ *   node scripts/chay-server.mjs --chi-may-nay   chỉ nhận kết nối từ chính máy này,
+ *                                                không mở ra mạng nội bộ
  *   node scripts/chay-server.mjs --du-lieu <thư mục>   đổi nơi chứa dữ liệu
  */
 import { createServer } from "node:http";
@@ -48,6 +50,10 @@ const thuMucDuLieuMacDinh = path.join(goc, ".wrangler", "state", "server");
 const thamSo = process.argv.slice(2);
 const khoiTao = thamSo.includes("--khoi-tao");
 const datLaiMatKhau = thamSo.includes("--dat-lai-mat-khau");
+const chiMayNay = thamSo.includes("--chi-may-nay");
+
+/** Thân yêu cầu lớn nhất được nhận. Biểu mẫu của ứng dụng chỉ vài KB. */
+const KICH_THUOC_THAN_TOI_DA = 2 * 1024 * 1024;
 const cong = Number(thamSo[thamSo.indexOf("--cong") + 1]) || 3000;
 
 /** Đọc `--ten gia-tri`. Cho phép chạy không cần gõ tay, để kiểm thử được. */
@@ -439,7 +445,18 @@ if (datLaiMatKhau) {
           ? undefined
           : Buffer.concat(await new Promise((ok, loi) => {
               const cac = [];
-              req.on("data", (c) => cac.push(c));
+              let tong = 0;
+              req.on("data", (c) => {
+                // Không giới hạn thì một yêu cầu khổng lồ từ bất kỳ máy nào
+                // trong wifi cũng làm đầy bộ nhớ của server.
+                tong += c.length;
+                if (tong > KICH_THUOC_THAN_TOI_DA) {
+                  loi(Object.assign(new Error("Thân yêu cầu quá lớn."), { maHttp: 413 }));
+                  req.destroy();
+                  return;
+                }
+                cac.push(c);
+              });
               req.on("end", () => ok(cac));
               req.on("error", loi);
             }));
@@ -471,12 +488,16 @@ if (datLaiMatKhau) {
       res.writeHead(phanHoi.status, cookie.length ? { ...dauRa, "set-cookie": cookie } : dauRa);
       res.end(Buffer.from(await phanHoi.arrayBuffer()));
     } catch (loi) {
-      res.writeHead(500, { "content-type": "text/plain; charset=utf-8" });
-      res.end(`Lỗi máy chủ: ${loi.message}`);
+      // Chi tiết lỗi ghi ra cửa sổ server cho người vận hành; người gọi chỉ
+      // nhận một câu chung, không lộ đường dẫn hay cấu trúc bên trong.
+      const ma = loi.maHttp ?? 500;
+      if (ma === 500) console.error("  [LỖI]", loi);
+      if (!res.headersSent) res.writeHead(ma, { "content-type": "text/plain; charset=utf-8" });
+      res.end(ma === 413 ? "Yêu cầu quá lớn." : "Lỗi máy chủ. Xem cửa sổ server để biết chi tiết.");
     }
   });
 
-  await new Promise((ok) => mayChu.listen(cong, "0.0.0.0", ok));
+  await new Promise((ok) => mayChu.listen(cong, chiMayNay ? "127.0.0.1" : "0.0.0.0", ok));
 
   /**
    * Rà nhắc nợ mỗi ngày một lần.
@@ -526,7 +547,7 @@ if (datLaiMatKhau) {
   console.log("  ==========================================");
   console.log("");
   console.log(`  Trên máy này:     http://localhost:${cong}`);
-  for (const dc of diaChiLan()) {
+  for (const dc of chiMayNay ? [] : diaChiLan()) {
     console.log(`  Máy khác/điện thoại: http://${dc}:${cong}`);
   }
   console.log("");

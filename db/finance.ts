@@ -3,7 +3,15 @@ import { and, eq, ne, sql } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 import { getDb } from "./index";
 import { newId } from "./ids";
-import { ISO_DATE, nextCode, ValidationError, withCodeRetry, writeAudit } from "./internal";
+import {
+  isRealDate,
+  MAX_AMOUNT,
+  nextCode,
+  todayInVietnam,
+  ValidationError,
+  withCodeRetry,
+  writeAudit,
+} from "./internal";
 import {
   contracts,
   invoices,
@@ -14,8 +22,17 @@ import {
   type InvoiceStatus,
 } from "./schema";
 
-function todayIso() {
-  return new Date().toISOString().slice(0, 10);
+const PAYMENT_METHODS = ["cash", "transfer", "card", "other"] as const;
+
+/**
+ * Ngày của giao dịch. Bỏ trống thì lấy hôm nay (giờ Việt Nam); nhập sai thì báo
+ * lỗi. Trước đây ngày sai bị lặng lẽ thay bằng hôm nay — khoản thu của tháng
+ * trước rơi sang tháng này mà không ai biết.
+ */
+function transactionDate(value: string | undefined, field: string) {
+  if (!value) return todayInVietnam();
+  if (!isRealDate(value)) throw new ValidationError("Ngày không hợp lệ.", field);
+  return value;
 }
 
 /**
@@ -55,6 +72,9 @@ export async function recordPayment(input: {
 
   if (!Number.isInteger(input.amount) || input.amount <= 0) {
     throw new ValidationError("Số tiền phải là số nguyên VNĐ lớn hơn 0.", "amount");
+  }
+  if (input.amount > MAX_AMOUNT) {
+    throw new ValidationError("Số tiền quá lớn. Kiểm tra lại có gõ thừa số 0 không.", "amount");
   }
 
   const [invoice] = await db
@@ -97,7 +117,10 @@ export async function recordPayment(input: {
     .where(eq(rooms.id, invoice.roomId))
     .limit(1);
 
-  const paidAt = input.paidAt && ISO_DATE.test(input.paidAt) ? input.paidAt : todayIso();
+  const paidAt = transactionDate(input.paidAt, "paidAt");
+  if (input.method && !(PAYMENT_METHODS as readonly string[]).includes(input.method)) {
+    throw new ValidationError("Hình thức thanh toán không hợp lệ.", "method");
+  }
   const paymentId = newId("pay");
 
   // Bước 1: giữ chỗ trên đơn. Điều kiện nằm trong chính câu UPDATE.
@@ -231,9 +254,13 @@ export async function createLedgerEntry(input: {
   if (!Number.isInteger(input.amount) || input.amount <= 0) {
     throw new ValidationError("Số tiền phải là số nguyên VNĐ lớn hơn 0.", "amount");
   }
+  if (input.amount > MAX_AMOUNT) {
+    throw new ValidationError("Số tiền quá lớn. Kiểm tra lại có gõ thừa số 0 không.", "amount");
+  }
   if (!input.category.trim()) {
     throw new ValidationError("Cần chọn nhóm giao dịch.", "category");
   }
+  const occurredAt = transactionDate(input.occurredAt, "occurredAt");
 
   const id = newId("led");
   await db.insert(ledgerEntries).values({
@@ -244,8 +271,7 @@ export async function createLedgerEntry(input: {
     category: input.category.trim(),
     description: input.description?.trim() ?? "",
     amount: input.amount,
-    occurredAt:
-      input.occurredAt && ISO_DATE.test(input.occurredAt) ? input.occurredAt : todayIso(),
+    occurredAt,
     recordedBy: input.actorId,
   });
 

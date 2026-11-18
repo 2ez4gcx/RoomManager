@@ -147,6 +147,17 @@ export async function generateReminders(today = todayInVietnam()) {
     .where(eq(reminders.scheduledFor, today));
   const alreadyToday = new Set(existing.map((row) => row.invoiceId));
 
+  // Lần nhắc gần nhất của mỗi đơn, tính tới hôm nay.
+  const lastRows = await db
+    .select({
+      invoiceId: reminders.invoiceId,
+      last: sql<string>`max(${reminders.scheduledFor})`,
+    })
+    .from(reminders)
+    .where(sql`${reminders.scheduledFor} <= ${today}`)
+    .groupBy(reminders.invoiceId);
+  const lastReminded = new Map(lastRows.map((row) => [row.invoiceId, row.last]));
+
   const toCreate: Array<typeof reminders.$inferInsert> = [];
   let skipped = 0;
 
@@ -162,9 +173,12 @@ export async function generateReminders(today = todayInVietnam()) {
     } else if (offset > 0 && offset <= daysBefore) {
       kind = "before_due";
     } else if (offset < 0) {
-      // Quá hạn thì nhắc lại theo chu kỳ, không nhắc mỗi ngày.
-      const lateDays = -offset;
-      if (lateDays % repeatEvery === 0) kind = "overdue";
+      // Quá hạn thì nhắc lại theo chu kỳ, không nhắc mỗi ngày. Tính chu kỳ từ
+      // LẦN NHẮC GẦN NHẤT chứ không theo "số ngày trễ chia hết cho chu kỳ":
+      // cách cũ chỉ nhắc đúng vào ngày thứ 3, 6, 9..., nên hôm đó máy tắt là
+      // lỡ luôn tới chu kỳ sau.
+      const last = lastReminded.get(row.invoiceId);
+      if (!last || daysBetween(last, today) >= repeatEvery) kind = "overdue";
     }
 
     if (!kind) continue;

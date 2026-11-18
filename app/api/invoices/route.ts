@@ -1,5 +1,6 @@
 import { requireApiUser, toErrorResponse } from "../../lib/api";
 import { invoiceSummary, listInvoices } from "../../../db/queries-extra";
+import { todayInVietnam } from "../../../db/internal";
 
 export async function GET(request: Request) {
   try {
@@ -7,7 +8,7 @@ export async function GET(request: Request) {
 
     const period =
       new URL(request.url).searchParams.get("period") ??
-      new Date().toISOString().slice(0, 7);
+      todayInVietnam().slice(0, 7);
 
     const [invoices, summary] = await Promise.all([
       listInvoices(period),

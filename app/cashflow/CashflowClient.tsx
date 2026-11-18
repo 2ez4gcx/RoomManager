@@ -4,7 +4,7 @@ import { ArrowDownLeft, ArrowUpRight, ChevronDown, Download, Plus, TrendingUp, X
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { AppShell, Modal, PageHeader, StatusBadge } from "../components/AppShell";
-import { formatMillions, formatShortDate, money } from "../lib/format";
+import { formatMillions, formatShortDate, money, recentPeriods, todayVietnam } from "../lib/format";
 import type { SessionUser } from "../../db/auth";
 import type { LedgerView, PropertyOption } from "../../db/queries";
 import type { CashflowSummary } from "../../db/queries-extra";
@@ -17,15 +17,6 @@ const CATEGORIES = {
 function periodLabel(period: string) {
   const [year, month] = period.split("-");
   return `Tháng ${month}/${year}`;
-}
-
-/** Sáu kỳ gần nhất tính từ tháng hiện tại, để chọn trong bộ lọc. */
-function recentPeriods(count = 6) {
-  const now = new Date();
-  return Array.from({ length: count }, (_, index) => {
-    const date = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - index, 1));
-    return date.toISOString().slice(0, 7);
-  });
 }
 
 export function CashflowClient({
@@ -269,7 +260,7 @@ function AddEntryModal({
         </label>
         <div className="form-grid">
           <label>Nội dung<input name="description" placeholder="Mô tả giao dịch" /></label>
-          <label>Ngày<input name="occurredAt" type="date" defaultValue={new Date().toISOString().slice(0, 10)} /></label>
+          <label>Ngày<input name="occurredAt" type="date" defaultValue={todayVietnam()} /></label>
         </div>
         {error && <p className="form-error" role="alert">{error}</p>}
         <button className="submit-button" type="submit" disabled={busy}>

@@ -120,6 +120,32 @@ async function kiemTraKhuQuanTri() {
   }
 }
 
+/**
+ * Tài khoản dữ liệu mẫu có mật khẩu nằm công khai trong mã nguồn. Nó tồn tại
+ * trên một bản chạy thật nghĩa là ai cũng đăng nhập được với quyền chủ nhà.
+ *
+ * Thử đăng nhập đúng một lần. Đây là yêu cầu ghi duy nhất của script, và nó
+ * không đổi dữ liệu nào: sai thì chỉ thêm một dòng vào bộ đếm nhập sai.
+ */
+async function kiemTraTaiKhoanMau() {
+  const { ok, res, loi } = await goi("/api/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ email: "quanly@hoangan.vn", password: "roommanager" }),
+  });
+  if (!ok) {
+    ghi("Tài khoản mẫu không đăng nhập được", false, loi, false);
+    return;
+  }
+  ghi(
+    "Tài khoản mẫu không đăng nhập được",
+    res.status !== 200,
+    res.status === 200
+      ? "ĐĂNG NHẬP ĐƯỢC bằng quanly@hoangan.vn / roommanager — bản này đang chứa dữ liệu mẫu. Chỉ chấp nhận được nếu đây là bản demo."
+      : `HTTP ${res.status}`,
+  );
+}
+
 async function kiemTraRouteDungDuLieu() {
   // Nhóm quan trọng nhất: route mở ra Internet cho phép bất kỳ ai xóa sạch dữ
   // liệu mà không cần đăng nhập.
@@ -252,6 +278,7 @@ if (!kếtNối) {
 }
 
 await kiemTraKhuQuanTri();
+await kiemTraTaiKhoanMau();
 await kiemTraRouteDungDuLieu();
 await kiemTraTrangCongKhai();
 await kiemTraTaiNguyen("/login");

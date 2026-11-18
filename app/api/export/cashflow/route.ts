@@ -1,5 +1,6 @@
 import { requireApiUser, toErrorResponse } from "../../../lib/api";
-import { listLedgerEntries } from "../../../../db/queries";
+import { PERIOD, todayInVietnam } from "../../../../db/internal";
+import { listLedgerEntriesForPeriod } from "../../../../db/queries";
 import { cashflowSummary } from "../../../../db/queries-extra";
 import { createXlsx, exportFileName, xlsxResponse } from "../../../../db/xlsx";
 
@@ -8,17 +9,18 @@ export async function GET(request: Request) {
     await requireApiUser();
 
     const period =
-      new URL(request.url).searchParams.get("period") ??
-      new Date().toISOString().slice(0, 7);
+      new URL(request.url).searchParams.get("period") ?? todayInVietnam().slice(0, 7);
+    if (!PERIOD.test(period)) {
+      return Response.json(
+        { error: "Kỳ phải có dạng YYYY-MM.", field: "period" },
+        { status: 400 },
+      );
+    }
 
-    const [summary, entries] = await Promise.all([
+    const [summary, inPeriod] = await Promise.all([
       cashflowSummary(period),
-      // Lấy rộng tay: sổ thu chi của cả năm vẫn nằm dưới ngưỡng này.
-      listLedgerEntries(1000),
+      listLedgerEntriesForPeriod(period),
     ]);
-
-    // Chỉ giữ giao dịch trong kỳ đang xem, cho khớp con số trên màn hình.
-    const inPeriod = entries.filter((entry) => entry.occurredAt.startsWith(period));
 
     const bytes = createXlsx([
       {

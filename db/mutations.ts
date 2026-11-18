@@ -22,6 +22,7 @@ import {
   rooms,
 } from "./schema";
 
+import { getSettings } from "./settings";
 export { ValidationError } from "./internal";
 
 /* ------------------------------------------------------------------ */
@@ -119,7 +120,8 @@ export type CreateTenantInput = {
   months?: number;
   rent?: number | null;
   deposit?: number | null;
-  billingDay?: number;
+  /** Bỏ trống thì lấy theo thiết lập `billing.defaultDay`. */
+  billingDay?: number | null;
   /** Người thao tác, ghi vào nhật ký và sổ quỹ. */
   actorId?: string | null;
 };
@@ -188,7 +190,9 @@ export async function createTenant(input: CreateTenantInput) {
     throw new ValidationError("Tiền cọc phải là số nguyên VNĐ.", "deposit");
   }
 
-  const billingDay = input.billingDay ?? 5;
+  const configuredDay = Number((await getSettings())["billing.defaultDay"]);
+  const billingDay =
+    input.billingDay ?? (Number.isInteger(configuredDay) && configuredDay >= 1 ? configuredDay : 5);
   if (!Number.isInteger(billingDay) || billingDay < 1 || billingDay > 28) {
     throw new ValidationError("Ngày thu phải nằm trong khoảng 1–28.", "billingDay");
   }

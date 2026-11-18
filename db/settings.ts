@@ -74,6 +74,11 @@ export async function updateSettings(
 
   for (const [key, value] of entries) {
     if (NUMERIC_KEYS.has(key)) {
+      // `Number("")` là 0: xóa trắng ô đơn giá điện mà không chặn thì từ kỳ sau
+      // tiền điện được tính 0 đồng.
+      if (String(value ?? "").trim() === "") {
+        throw new ValidationError(`Chưa nhập giá trị cho "${key}".`, key);
+      }
       const parsed = Number(value);
       if (!Number.isInteger(parsed) || parsed < 0) {
         throw new ValidationError(`Giá trị của "${key}" phải là số nguyên không âm.`, key);

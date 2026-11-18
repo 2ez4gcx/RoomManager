@@ -4,6 +4,7 @@ import { getDb } from "./index";
 import { newId } from "./ids";
 import { ISO_DATE, nextCode, ValidationError, withCodeRetry, writeAudit } from "./internal";
 import { bookingRequests, contracts, rooms } from "./schema";
+import { getSettings } from "./settings";
 
 export type BookingStatusValue = "new" | "contacted" | "confirmed" | "rejected";
 
@@ -112,7 +113,8 @@ export async function setBookingStatus(
   bookingId: string,
   status: BookingStatusValue,
   actorId: string,
-  holdDays = 3,
+  /** Bỏ trống thì lấy theo thiết lập `booking.holdDays`. */
+  holdDaysOverride?: number,
 ) {
   const db = getDb();
 
@@ -124,6 +126,9 @@ export async function setBookingStatus(
   if (!booking) throw new ValidationError("Không tìm thấy yêu cầu đặt phòng.", "bookingId");
 
   let holdUntil: Date | null = null;
+  const configured = Number((await getSettings())["booking.holdDays"]);
+  const holdDays =
+    holdDaysOverride ?? (Number.isInteger(configured) && configured > 0 ? configured : 3);
 
   if (status === "confirmed") {
     if (!booking.roomId) {

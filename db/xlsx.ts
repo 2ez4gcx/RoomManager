@@ -9,6 +9,7 @@
  * Tốn thêm dung lượng nhưng bỏ được cả một file XML và một tầng đánh chỉ số.
  */
 import { createZip } from "./zip";
+import { todayInVietnam } from "./internal";
 
 export type CellValue = string | number | null | undefined;
 
@@ -31,7 +32,11 @@ const STYLE_HEADER = 1;
 const STYLE_MONEY = 2;
 
 function escapeXml(value: string) {
+  // XML 1.0 cấm hầu hết ký tự điều khiển, kể cả khi đã thoát. Một ký tự như
+  // vậy lọt vào ô (dán từ nơi khác) là Excel báo file hỏng và không mở.
   return value
+    // eslint-disable-next-line no-control-regex -- chủ ý khớp ký tự điều khiển để loại bỏ
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, "")
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
@@ -184,7 +189,7 @@ ${sheetEntries
  * Downloads. Bản chụp toàn bộ danh sách thì gắn ngày để phân biệt các lần xuất.
  */
 export function exportFileName(prefix: string, options?: { withDate?: boolean }) {
-  const suffix = options?.withDate ? `-${new Date().toISOString().slice(0, 10)}` : "";
+  const suffix = options?.withDate ? `-${todayInVietnam()}` : "";
   return `${prefix}${suffix}.xlsx`;
 }
 

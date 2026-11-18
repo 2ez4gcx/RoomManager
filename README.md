@@ -92,6 +92,8 @@ Xác nhận bằng:
 npm run kiem-tra-deploy -- http://localhost:3000
 ```
 
+Không cần cho máy khác truy cập thì chạy `node scripts/chay-server.mjs --chi-may-nay`: server chỉ nhận kết nối từ chính máy này, không mở ra mạng nội bộ.
+
 Mạng nội bộ không có HTTPS nên mật khẩu đi qua wifi ở dạng chữ thường. Lệnh
 kiểm tra ghi rõ điều này nhưng không coi là lỗi chặn khi địa chỉ nằm trong dải
 IP riêng.

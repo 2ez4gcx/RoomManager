@@ -1,5 +1,5 @@
 import { requireApiUser, toErrorResponse } from "../../../lib/api";
-import { todayInVietnam } from "../../../../db/internal";
+import { PERIOD, todayInVietnam } from "../../../../db/internal";
 import { listInvoices } from "../../../../db/queries-extra";
 import { createXlsx, exportFileName, xlsxResponse } from "../../../../db/xlsx";
 
@@ -9,6 +9,12 @@ export async function GET(request: Request) {
 
     const period =
       new URL(request.url).searchParams.get("period") ?? todayInVietnam().slice(0, 7);
+    if (!PERIOD.test(period)) {
+      return Response.json(
+        { error: "Kỳ phải có dạng YYYY-MM.", field: "period" },
+        { status: 400 },
+      );
+    }
     const invoices = await listInvoices(period);
 
     /** Tổng tiền theo từng loại dòng, để cột nào ra cột nấy. */
