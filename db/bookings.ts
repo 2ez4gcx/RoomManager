@@ -2,7 +2,7 @@
 import { and, eq, gt, ne, sql } from "drizzle-orm";
 import { getDb } from "./index";
 import { newId } from "./ids";
-import { ISO_DATE, nextCode, ValidationError, writeAudit } from "./internal";
+import { ISO_DATE, nextCode, ValidationError, withCodeRetry, writeAudit } from "./internal";
 import { bookingRequests, contracts, rooms } from "./schema";
 
 export type BookingStatusValue = "new" | "contacted" | "confirmed" | "rejected";
@@ -54,21 +54,24 @@ export async function createBookingRequest(input: BookingRequestInput) {
   }
 
   const id = newId("bkg");
-  await db.insert(bookingRequests).values({
-    id,
-    code: await nextCode(db, bookingRequests, bookingRequests.code, "DP"),
-    fullName,
-    phone,
-    email: input.email?.trim() || null,
-    propertyId,
-    roomTypeId,
-    roomId,
-    preferredMoveIn: input.preferredMoveIn ?? null,
-    occupants: Math.min(Math.max(input.occupants ?? 1, 1), 10),
-    // Cắt độ dài để biểu mẫu công khai không nhồi được dữ liệu lớn vào CSDL.
-    message: (input.message ?? "").slice(0, 1000),
-    status: "new",
-  });
+  // Biểu mẫu công khai là nơi dễ có hai người gửi cùng lúc nhất.
+  await withCodeRetry(async () =>
+    db.insert(bookingRequests).values({
+      id,
+      code: await nextCode(db, bookingRequests, bookingRequests.code, "DP"),
+      fullName,
+      phone,
+      email: input.email?.trim() || null,
+      propertyId,
+      roomTypeId,
+      roomId,
+      preferredMoveIn: input.preferredMoveIn ?? null,
+      occupants: Math.min(Math.max(input.occupants ?? 1, 1), 10),
+      // Cắt độ dài để biểu mẫu công khai không nhồi được dữ liệu lớn vào CSDL.
+      message: (input.message ?? "").slice(0, 1000),
+      status: "new",
+    }),
+  );
 
   return { id };
 }

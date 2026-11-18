@@ -8,9 +8,20 @@
  */
 import { toErrorResponse, toNumber } from "../../lib/api";
 import { createBookingRequest } from "../../../db/bookings";
+import { clientIp, formatWait, registerBookingSubmission } from "../../../db/login-throttle";
 
 export async function POST(request: Request) {
   try {
+    const throttle = await registerBookingSubmission(clientIp(request));
+    if (throttle.blocked) {
+      return Response.json(
+        {
+          error: `Bạn gửi quá nhiều yêu cầu. Thử lại sau ${formatWait(throttle.retryAfterSeconds)}.`,
+        },
+        { status: 429, headers: { "Retry-After": String(throttle.retryAfterSeconds) } },
+      );
+    }
+
     const body = (await request.json()) as Record<string, unknown>;
 
     await createBookingRequest({

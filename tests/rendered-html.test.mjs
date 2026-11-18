@@ -1583,6 +1583,19 @@ test("không trả phòng hai lần cho cùng một hợp đồng", async () => 
   assert.match((await again.json()).error, /đã kết thúc rồi/);
 });
 
+test("hai lần trả phòng song song chỉ hoàn cọc một lần", async () => {
+  const { tenant } = await rentARoom("Khách Trả Song Song", "0905550031", 2000000);
+  const before = await ledgerTotals();
+
+  const body = { contractId: tenant.contractId, endDate: new Date().toISOString().slice(0, 10) };
+  const responses = await Promise.all([json("/api/move-out", body), json("/api/move-out", body)]);
+  const statuses = responses.map((response) => response.status).sort();
+  assert.deepEqual(statuses, [200, 400], "phải đúng một lần thành công");
+
+  const after = await ledgerTotals();
+  assert.equal(after.refunds - before.refunds, 2000000, "cọc bị hoàn hai lần");
+});
+
 test("cọc được cấn vào đơn còn nợ, phần dư mới hoàn lại", async () => {
   const { tenant, room } = await rentARoom("Khách Còn Nợ", "0905550002", 6000000);
 
@@ -2828,4 +2841,88 @@ test("hai yêu cầu đồng thời không tạo được hai hợp đồng trê
   const sau = await (await authed("/api/rooms")).json();
   const phong = sau.rooms.find((r) => r.id === trong.id);
   assert.equal(phong.status, "Đang thuê");
+});
+
+/* ------------------------------------------------------------------ */
+/* Thao tác song song và mã tuần tự                                   */
+/* ------------------------------------------------------------------ */
+
+test("hai lần thu song song cho cùng một đơn chỉ ghi nhận một lần", async () => {
+  const { invoices } = await (await authed("/api/invoices")).json();
+  const unpaid = invoices.find(
+    (invoice) => invoice.outstanding > 0 && invoice.status !== "cancelled",
+  );
+  assert.ok(unpaid, "cần một đơn còn nợ");
+
+  const before = await (await authed("/api/ledger?limit=1000")).json();
+
+  // Mô phỏng bấm đúp: hai yêu cầu cùng thu hết phần còn nợ.
+  const body = { invoiceId: unpaid.id, amount: unpaid.outstanding };
+  const responses = await Promise.all([json("/api/payments", body), json("/api/payments", body)]);
+  const statuses = responses.map((response) => response.status).sort();
+  assert.deepEqual(statuses, [201, 400], "phải đúng một lần thành công");
+
+  const after = await (await authed("/api/invoices")).json();
+  const updated = after.invoices.find((invoice) => invoice.id === unpaid.id);
+  assert.equal(updated.outstanding, 0);
+  assert.equal(updated.status, "paid");
+
+  // Sổ quỹ chỉ được có thêm đúng một dòng thu cho đơn này.
+  const ledger = await (await authed("/api/ledger?limit=1000")).json();
+  const created = ledger.entries.filter(
+    (entry) => !before.entries.some((old) => old.id === entry.id),
+  );
+  assert.equal(created.length, 1, "sổ quỹ ghi thừa khoản thu");
+  assert.equal(created[0].amount, unpaid.outstanding);
+});
+
+test("mã tuần tự vẫn tăng đúng sau dòng thứ 999", async () => {
+  // So mã theo chuỗi thì "DP-999" > "DP-1000": từ đây mọi lần tạo đều trùng mã.
+  const db = await mf.getD1Database("DB");
+  for (const code of ["DP-999", "DP-1000"]) {
+    await db
+      .prepare("INSERT INTO booking_requests (id, code, full_name, phone) VALUES (?, ?, ?, ?)")
+      .bind(`bkg_test_${code}`, code, "Khách Mã Lớn", "0905550041")
+      .run();
+  }
+
+  for (const name of ["Khách Sau Một Nghìn A", "Khách Sau Một Nghìn B"]) {
+    const response = await anonymous("/api/booking-requests", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ fullName: name, phone: "0905550042" }),
+    });
+    assert.equal(response.status, 201, `${name} không gửi được`);
+  }
+
+  const { results } = await db
+    .prepare("SELECT code FROM booking_requests WHERE full_name LIKE 'Khách Sau Một Nghìn %' ORDER BY code")
+    .all();
+  assert.deepEqual(results.map((row) => row.code), ["DP-1001", "DP-1002"]);
+});
+
+test("biểu mẫu đặt phòng chặn một IP gửi dồn dập, không ảnh hưởng đăng nhập", async () => {
+  const send = () =>
+    anonymous("/api/booking-requests", {
+      method: "POST",
+      headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.77" },
+      // Số điện thoại sai để không tạo dòng nào; lượt gửi vẫn bị đếm.
+      body: JSON.stringify({ fullName: "Kẻ Gửi Dồn", phone: "abc" }),
+    });
+
+  for (let index = 0; index < 10; index += 1) {
+    assert.equal((await send()).status, 400, `lượt ${index + 1} phải tới được bước kiểm dữ liệu`);
+  }
+
+  const blocked = await send();
+  assert.equal(blocked.status, 429);
+  assert.ok(Number(blocked.headers.get("retry-after")) > 0);
+
+  // Lượt gửi form không được tính thành đăng nhập sai của IP đó.
+  const login = await anonymous("/api/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json", "cf-connecting-ip": "203.0.113.77" },
+    body: JSON.stringify({ email: "khong-ton-tai@example.com", password: "sai-mat-khau" }),
+  });
+  assert.equal(login.status, 401);
 });

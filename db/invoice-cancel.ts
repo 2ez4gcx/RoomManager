@@ -56,6 +56,34 @@ export async function cancelInvoice(input: {
     );
   }
 
+  // Hủy bằng một câu UPDATE có điều kiện rồi kiểm tra có dòng nào đổi không.
+  // Giữa lúc đọc đơn ở trên và lúc ghi ở đây, một khoản thanh toán có thể đã
+  // kịp vào; điều kiện `paid_amount = 0` chặn việc hủy một đơn đã có tiền.
+  const [cancelled] = await db
+    .update(invoices)
+    .set({
+      status: "cancelled",
+      cancelledAt: new Date(),
+      cancelledBy: input.actorId,
+      cancelReason: reason,
+      updatedAt: sql`(unixepoch() * 1000)`,
+    })
+    .where(
+      and(
+        eq(invoices.id, invoice.id),
+        eq(invoices.status, invoice.status),
+        eq(invoices.paidAmount, 0),
+      ),
+    )
+    .returning({ id: invoices.id });
+
+  if (!cancelled) {
+    throw new ValidationError(
+      `Đơn ${invoice.code} vừa thay đổi ở một thao tác khác. Tải lại trang rồi kiểm tra.`,
+      "invoiceId",
+    );
+  }
+
   // Bỏ tham chiếu chỉ số điện, nhưng GIỮ lại bản ghi chỉ số.
   //
   // Xóa hẳn thì mốc chỉ số đầu kỳ biến mất: lập lại cùng kỳ sẽ tính từ 0 và ra
@@ -73,17 +101,6 @@ export async function cancelInvoice(input: {
       .set({ meterReadingId: null })
       .where(eq(invoiceItems.invoiceId, invoice.id));
   }
-
-  await db
-    .update(invoices)
-    .set({
-      status: "cancelled",
-      cancelledAt: new Date(),
-      cancelledBy: input.actorId,
-      cancelReason: reason,
-      updatedAt: sql`(unixepoch() * 1000)`,
-    })
-    .where(and(eq(invoices.id, invoice.id), eq(invoices.status, invoice.status)));
 
   await writeAudit(db, {
     actorId: input.actorId,

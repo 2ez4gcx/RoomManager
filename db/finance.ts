@@ -1,9 +1,18 @@
 /** Thanh toán và sổ thu chi. */
-import { eq, sql } from "drizzle-orm";
+import { and, eq, ne, sql } from "drizzle-orm";
+import type { BatchItem } from "drizzle-orm/batch";
 import { getDb } from "./index";
 import { newId } from "./ids";
-import { ISO_DATE, nextCode, ValidationError, writeAudit } from "./internal";
-import { contracts, invoices, ledgerEntries, paymentAllocations, payments, rooms } from "./schema";
+import { ISO_DATE, nextCode, ValidationError, withCodeRetry, writeAudit } from "./internal";
+import {
+  contracts,
+  invoices,
+  ledgerEntries,
+  paymentAllocations,
+  payments,
+  rooms,
+  type InvoiceStatus,
+} from "./schema";
 
 function todayIso() {
   return new Date().toISOString().slice(0, 10);
@@ -12,11 +21,18 @@ function todayIso() {
 /**
  * Ghi nhận một khoản thu và cấn vào đơn.
  *
- * Cập nhật `invoices.paid_amount` cùng trạng thái đơn ngay trong thao tác này
- * để số công nợ không lệch, và sinh luôn dòng thu trong sổ thu chi. D1 chưa hỗ
- * trợ transaction tương tác nên các bước chạy tuần tự; hỏng giữa chừng sẽ để
- * lại khoản thanh toán chưa cấn, phát hiện được bằng cách đối chiếu
- * `payment_allocations` với `invoices.paid_amount`.
+ * D1 không có transaction tương tác, nên thao tác chia làm hai bước, mỗi bước
+ * tự nó nguyên tử:
+ *
+ * 1. "Giữ chỗ" trên đơn bằng MỘT câu UPDATE có điều kiện: cộng thẳng vào
+ *    `paid_amount` trong SQL, chỉ khi đơn chưa hủy và cộng xong không vượt
+ *    `total`. Hai yêu cầu song song (bấm đúp) không thể cùng lọt: câu thứ hai
+ *    thấy số đã cộng của câu thứ nhất. Đọc `paid_amount` ra rồi ghi lại số
+ *    tuyệt đối — cách làm cũ — thì cả hai cùng đọc số cũ, sổ quỹ ghi hai khoản
+ *    thu mà đơn chỉ ghi một.
+ * 2. Ghi khoản thanh toán, dòng cấn trừ và dòng sổ quỹ trong một `db.batch`
+ *    (D1 chạy cả lô trong một transaction). Lô hỏng thì trả lại phần đã giữ ở
+ *    bước 1, nên không còn trạng thái "đơn đã trả mà không có khoản thu".
  */
 export async function recordPayment(input: {
   invoiceId: string;
@@ -84,56 +100,115 @@ export async function recordPayment(input: {
   const paidAt = input.paidAt && ISO_DATE.test(input.paidAt) ? input.paidAt : todayIso();
   const paymentId = newId("pay");
 
-  await db.insert(payments).values({
-    id: paymentId,
-    code: await nextCode(db, payments, payments.code, "TT", 4),
-    guestId: contract.guestId,
-    amount: input.amount,
-    method: input.method ?? "transfer",
-    paidAt,
-    note: input.note?.trim() || `Thu cho đơn ${invoice.code}`,
-    recordedBy: input.actorId,
-  });
-
-  await db.insert(paymentAllocations).values({
-    id: newId("pal"),
-    paymentId,
-    invoiceId: invoice.id,
-    amount: input.amount,
-  });
-
-  const newPaid = invoice.paidAmount + input.amount;
-  await db
+  // Bước 1: giữ chỗ trên đơn. Điều kiện nằm trong chính câu UPDATE.
+  const [claimed] = await db
     .update(invoices)
     .set({
-      paidAmount: newPaid,
-      status: newPaid >= invoice.total ? "paid" : "partial",
+      paidAmount: sql`${invoices.paidAmount} + ${input.amount}`,
+      status: sql<InvoiceStatus>`CASE WHEN ${invoices.paidAmount} + ${input.amount} >= ${invoices.total} THEN 'paid' ELSE 'partial' END`,
       updatedAt: sql`(unixepoch() * 1000)`,
     })
-    .where(eq(invoices.id, invoice.id));
+    .where(
+      and(
+        eq(invoices.id, invoice.id),
+        ne(invoices.status, "cancelled"),
+        sql`${invoices.paidAmount} + ${input.amount} <= ${invoices.total}`,
+      ),
+    )
+    .returning({ paidAmount: invoices.paidAmount });
 
-  if (!input.skipLedger) {
-    await db.insert(ledgerEntries).values({
-      id: newId("led"),
-      code: await nextCode(db, ledgerEntries, ledgerEntries.code, "GD", 4),
-      propertyId: roomRow?.propertyId ?? null,
-      direction: "in",
-      category: input.category ?? "Tiền phòng",
-      description: `Thu đơn ${invoice.code}`,
-      amount: input.amount,
-      occurredAt: paidAt,
-      paymentId,
-      recordedBy: input.actorId,
+  if (!claimed) {
+    throw new ValidationError(
+      "Đơn này vừa được thu tiền hoặc hủy ở một thao tác khác. Tải lại trang rồi kiểm tra.",
+      "invoiceId",
+    );
+  }
+  const newPaid = claimed.paidAmount;
+
+  // Bước 2: ghi chứng từ trong một lô nguyên tử.
+  try {
+    await withCodeRetry(async () => {
+      const statements: [BatchItem<"sqlite">, ...BatchItem<"sqlite">[]] = [
+        db.insert(payments).values({
+          id: paymentId,
+          code: await nextCode(db, payments, payments.code, "TT", 4),
+          guestId: contract.guestId,
+          amount: input.amount,
+          method: input.method ?? "transfer",
+          paidAt,
+          note: input.note?.trim() || `Thu cho đơn ${invoice.code}`,
+          recordedBy: input.actorId,
+        }),
+        db.insert(paymentAllocations).values({
+          id: newId("pal"),
+          paymentId,
+          invoiceId: invoice.id,
+          amount: input.amount,
+        }),
+      ];
+
+      if (!input.skipLedger) {
+        statements.push(
+          db.insert(ledgerEntries).values({
+            id: newId("led"),
+            code: await nextCode(db, ledgerEntries, ledgerEntries.code, "GD", 4),
+            propertyId: roomRow?.propertyId ?? null,
+            direction: "in",
+            category: input.category ?? "Tiền phòng",
+            description: `Thu đơn ${invoice.code}`,
+            amount: input.amount,
+            occurredAt: paidAt,
+            paymentId,
+            recordedBy: input.actorId,
+          }),
+        );
+      }
+
+      await db.batch(statements);
     });
+  } catch (error) {
+    // Trả lại phần đã giữ, nếu không đơn sẽ báo đã thu một khoản không có
+    // chứng từ. Nhưng lô có thể đã ghi xong mà chỉ mất phản hồi: khi đó khoản
+    // thanh toán tồn tại và KHÔNG được trả lại, nếu không người dùng thu lại
+    // lần nữa và sổ quỹ ghi hai khoản. Không đọc được thì coi như đã ghi —
+    // thà để đơn báo đã thu rồi đối chiếu, còn hơn mời thu trùng.
+    try {
+      const [written] = await db
+        .select({ id: payments.id })
+        .from(payments)
+        .where(eq(payments.id, paymentId))
+        .limit(1);
+
+      if (!written) {
+        const unpaidStatus: InvoiceStatus = invoice.status === "draft" ? "draft" : "issued";
+        await db
+          .update(invoices)
+          .set({
+            paidAmount: sql`${invoices.paidAmount} - ${input.amount}`,
+            status: sql<InvoiceStatus>`CASE WHEN ${invoices.paidAmount} - ${input.amount} <= 0 THEN ${unpaidStatus} ELSE 'partial' END`,
+            updatedAt: sql`(unixepoch() * 1000)`,
+          })
+          .where(and(eq(invoices.id, invoice.id), ne(invoices.status, "cancelled")));
+      }
+    } catch (rollbackError) {
+      console.error("[thanh-toan-khong-hoan-duoc]", invoice.code, rollbackError);
+    }
+    throw error;
   }
 
-  await writeAudit(db, {
-    actorId: input.actorId,
-    action: "payment.record",
-    entityType: "invoice",
-    entityId: invoice.id,
-    changes: { amount: input.amount, paidAmount: newPaid, total: invoice.total },
-  });
+  // Tiền đã ghi xong. Nhật ký hỏng không được biến thao tác thành "thất bại":
+  // người gọi sẽ tưởng chưa thu và thu lại.
+  try {
+    await writeAudit(db, {
+      actorId: input.actorId,
+      action: "payment.record",
+      entityType: "invoice",
+      entityId: invoice.id,
+      changes: { amount: input.amount, paidAmount: newPaid, total: invoice.total },
+    });
+  } catch (auditError) {
+    console.error("[nhat-ky-thanh-toan]", invoice.code, auditError);
+  }
 
   return { paymentId, paidAmount: newPaid, remaining: invoice.total - newPaid };
 }

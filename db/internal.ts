@@ -1,5 +1,5 @@
 /** Tiện ích dùng chung cho các module ghi dữ liệu. */
-import { desc, getTableColumns } from "drizzle-orm";
+import { desc, getTableColumns, like, sql } from "drizzle-orm";
 import type { SQLiteColumn, SQLiteTable } from "drizzle-orm/sqlite-core";
 import { getDb } from "./index";
 import { newId } from "./ids";
@@ -47,15 +47,18 @@ export function formatCode(prefix: string, lastCode: string | undefined, width =
 }
 
 /**
- * Mã kế tiếp của một bảng, dựa trên mã lớn nhất đang có.
+ * Mã kế tiếp của một bảng, dựa trên mã có phần SỐ lớn nhất đang có.
  *
- * Sắp xếp theo chuỗi, nên MỌI mã trong cùng một bảng phải có cùng tiền tố và
- * phần số cùng độ dài — chỉ khi đó thứ tự chuỗi mới trùng thứ tự số. Chen một
- * mã dạng khác vào (ví dụ `GD-D001`) sẽ làm hàm này đọc ra số không hợp lệ và
- * trả về mã đã tồn tại.
+ * Phải so theo số chứ không theo chuỗi: so chuỗi thì `DP-999` lớn hơn
+ * `DP-1000`, nên từ dòng thứ 1.000 trở đi hàm cứ trả lại `DP-1000` và mọi lần
+ * tạo mới đều vấp ràng buộc UNIQUE — bảng đó hỏng vĩnh viễn. Độ rộng `width`
+ * vì thế chỉ còn là cách hiển thị, không phải giới hạn số dòng.
  *
- * Chưa chống được hai yêu cầu tạo cùng lúc; các cột mã đều có ràng buộc UNIQUE
- * nên trường hợp đó báo lỗi thay vì tạo trùng.
+ * Chỉ xét mã đúng tiền tố; mã dạng khác chen vào cùng bảng bị bỏ qua.
+ *
+ * Hai yêu cầu tạo cùng lúc vẫn có thể đọc ra cùng một mã. Ràng buộc UNIQUE
+ * chặn việc tạo trùng; bọc lệnh ghi trong `withCodeRetry` để lần thua tự lấy
+ * mã mới thay vì báo lỗi.
  */
 export async function nextCode(
   db: Db,
@@ -64,13 +67,46 @@ export async function nextCode(
   prefix: string,
   width = 3,
 ) {
+  const number = sql<number>`CAST(substr(${column}, ${prefix.length + 2}) AS INTEGER)`;
   const [last] = await db
     .select({ code: column })
     .from(table)
-    .orderBy(desc(column))
+    .where(like(column, `${prefix}-%`))
+    .orderBy(desc(number))
     .limit(1);
 
   return formatCode(prefix, last?.code as string | undefined, width);
+}
+
+/**
+ * Lỗi có phải do trùng cột mã (`<bảng>.code`) không.
+ *
+ * D1 gói lỗi gốc vào `cause` và chỉ để "Failed query: ..." ở `message`, nên
+ * phải duyệt cả chuỗi `cause`.
+ */
+export function isCodeCollision(error: unknown) {
+  let current: unknown = error;
+  for (let depth = 0; depth < 6 && current; depth += 1) {
+    const message = current instanceof Error ? current.message : String(current);
+    if (/UNIQUE constraint failed: \w+\.code\b/.test(message)) return true;
+    current = current instanceof Error ? current.cause : undefined;
+  }
+  return false;
+}
+
+/**
+ * Chạy một lệnh ghi có dùng `nextCode`, thử lại khi trùng mã.
+ *
+ * `run` phải tự gọi `nextCode` bên trong, để mỗi lần thử lấy mã mới.
+ */
+export async function withCodeRetry<T>(run: () => Promise<T>, attempts = 5): Promise<T> {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      return await run();
+    } catch (error) {
+      if (attempt >= attempts || !isCodeCollision(error)) throw error;
+    }
+  }
 }
 
 /**

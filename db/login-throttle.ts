@@ -15,7 +15,7 @@
  * 2. Theo IP: chặn kiểu rải một mật khẩu phổ biến lên nhiều tài khoản từ cùng
  *    một máy — kiểu tấn công mà ngưỡng thứ nhất không bắt được.
  */
-import { and, eq, gte, lt, sql } from "drizzle-orm";
+import { and, eq, gte, lt, ne, sql } from "drizzle-orm";
 import { getDb } from "./index";
 import { newId } from "./ids";
 import { loginAttempts } from "./schema";
@@ -28,6 +28,15 @@ export const MAX_ATTEMPTS_PER_ACCOUNT = 5;
 
 /** Số lần sai tối đa cho một IP trong cửa sổ, tính trên mọi định danh. */
 export const MAX_ATTEMPTS_PER_IP = 20;
+
+/**
+ * Định danh dành riêng cho lượt gửi biểu mẫu đặt phòng công khai. Có ký tự `@`
+ * ở đầu nên không trùng được với email hay tên đăng nhập nào.
+ */
+export const BOOKING_FORM_KEY = "@bieu-mau-dat-phong";
+
+/** Số yêu cầu đặt phòng tối đa từ một IP trong cửa sổ. */
+export const MAX_BOOKINGS_PER_IP = 10;
 
 export type ThrottleState = {
   /** Id bản ghi vừa tạo, để hủy nếu lần thử này hóa ra không phải thất bại. */
@@ -108,7 +117,15 @@ export async function registerAttempt(
       oldest: sql<number>`min(${loginAttempts.createdAt})`,
     })
     .from(loginAttempts)
-    .where(and(eq(loginAttempts.ip, ip), gte(loginAttempts.createdAt, since)))
+    .where(
+      and(
+        eq(loginAttempts.ip, ip),
+        // Lượt gửi biểu mẫu đặt phòng dùng chung bảng nhưng không phải lần
+        // đăng nhập sai; đếm vào đây thì khách gửi form sẽ khóa luôn đăng nhập.
+        ne(loginAttempts.identifier, BOOKING_FORM_KEY),
+        gte(loginAttempts.createdAt, since),
+      ),
+    )
     .limit(1);
 
   const accountCount = Number(perAccount?.count ?? 0);
@@ -172,4 +189,44 @@ export async function clearLoginFailures(identifier: string, ip: string) {
 export function formatWait(seconds: number) {
   if (seconds < 90) return `${seconds} giây`;
   return `${Math.ceil(seconds / 60)} phút`;
+}
+
+/**
+ * Giới hạn số lần gửi biểu mẫu đặt phòng công khai từ một IP.
+ *
+ * Route đó không cần đăng nhập, nên không có giới hạn thì ai cũng nhồi được
+ * hàng nghìn dòng vào `booking_requests`. Cùng nguyên tắc với đăng nhập: ghi
+ * trước rồi mới đếm, để cụm yêu cầu song song tự chặn lẫn nhau.
+ */
+export async function registerBookingSubmission(ip: string) {
+  const db = getDb();
+
+  await db
+    .insert(loginAttempts)
+    .values({ id: newId("att"), identifier: BOOKING_FORM_KEY, ip });
+  await db.delete(loginAttempts).where(lt(loginAttempts.createdAt, windowStart()));
+
+  const [row] = await db
+    .select({
+      count: sql<number>`count(*)`,
+      oldest: sql<number>`min(${loginAttempts.createdAt})`,
+    })
+    .from(loginAttempts)
+    .where(
+      and(
+        eq(loginAttempts.identifier, BOOKING_FORM_KEY),
+        eq(loginAttempts.ip, ip),
+        gte(loginAttempts.createdAt, windowStart()),
+      ),
+    );
+
+  if (Number(row?.count ?? 0) <= MAX_BOOKINGS_PER_IP) {
+    return { blocked: false, retryAfterSeconds: 0 };
+  }
+
+  const unlockAt = Number(row?.oldest ?? Date.now()) + THROTTLE_WINDOW_MS;
+  return {
+    blocked: true,
+    retryAfterSeconds: Math.max(Math.ceil((unlockAt - Date.now()) / 1000), 1),
+  };
 }
